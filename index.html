@@ -3240,9 +3240,21 @@
 
       // 2. Second check Supabase user session
       try {
-        const res = await fetch('/api/auth/supabase-config');
-        const config = await res.json();
-        const { supabaseUrl, supabaseAnonKey } = config;
+        // Prefer the server's config when it is reachable, but fall back to the
+        // public values in config.js. Without this, a dashboard hosted away from the
+        // store server could not create a Supabase client and sign-in silently failed.
+        let supabaseUrl = window.SAI_SUPABASE_URL || null;
+        let supabaseAnonKey = window.SAI_SUPABASE_ANON_KEY || null;
+        try {
+          const res = await fetch('/api/auth/supabase-config', { signal: AbortSignal.timeout(4000) });
+          if (res.ok) {
+            const config = await res.json();
+            if (config.supabaseUrl) supabaseUrl = config.supabaseUrl;
+            if (config.supabaseAnonKey) supabaseAnonKey = config.supabaseAnonKey;
+          }
+        } catch (_cfgErr) {
+          console.warn('[Auth] Store server unreachable; using bundled Supabase config so sign-in still works.');
+        }
 
         if (supabaseUrl && supabaseAnonKey && typeof window.supabase !== 'undefined') {
           supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
@@ -3275,6 +3287,7 @@
 
     initSupabaseAndCheckSession();
   </script>
+  <script src="config.js"></script>
   <script src="app-v2.js?v=20261104_security_v5"></script>
 </body>
 </html>
