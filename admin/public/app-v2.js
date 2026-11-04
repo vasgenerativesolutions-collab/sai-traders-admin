@@ -43,6 +43,15 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
   window.fetch = function(url, options) {
     if (typeof url === 'string' && url.startsWith('/api/')) {
       url = (apiBase ? apiBase.replace(/\/$/, '') : '') + url;
+      // When the dashboard is served from a different origin than the API, the
+      // admin_session cookie is third-party and browsers withhold it. Carry the
+      // token in a header instead, and ask for credentials so CORS allows it.
+      options = Object.assign({}, options);
+      const hdrs = new Headers(options.headers || {});
+      const adminTok = localStorage.getItem('sai_admin_token');
+      if (adminTok && !hdrs.has('Authorization')) hdrs.set('Authorization', 'Bearer ' + adminTok);
+      options.headers = hdrs;
+      if (apiBase) options.credentials = 'include';
     }
     return originalFetch.call(this, url, options).then(async (response) => {
       const contentType = response.headers.get('content-type') || '';
@@ -52,6 +61,21 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
       return response;
     });
   };
+
+  // Served from somewhere that is not the API itself, with no backend configured yet.
+  // Prompt rather than letting every request fail with no explanation.
+  if (!isDirectBackend && !apiBase) {
+    setTimeout(function () {
+      var guess = prompt(
+        'This dashboard is hosted separately from your store server.\n\n' +
+        'Enter the backend API URL (the Store PC), for example:\n' +
+        '  http://192.168.1.17:3000\n' +
+        '  https://your-tunnel.trycloudflare.com',
+        ''
+      );
+      if (guess && guess.trim()) window.setSaiApiBaseUrl(guess);
+    }, 400);
+  }
 
   window.setSaiApiBaseUrl = function(newUrl) {
     if (newUrl && newUrl.trim()) {

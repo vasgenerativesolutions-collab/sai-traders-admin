@@ -202,7 +202,15 @@ async function requireAdminAuth(req, res, next) {
       return next();
     }
 
-    // 3. Supabase Auth JWT Verification
+    // 3. Admin PIN session token (HMAC, issued by POST /api/admin/login).
+    //    Checked before Supabase so a PIN login works from any origin, which is what
+    //    lets the dashboard be served from somewhere other than the Store PC itself.
+    if (verifyAdminSessionToken(token)) {
+      req.user = { id: 'admin_pin_session', email: MASTER_ADMIN_EMAIL_DEFAULT, role: 'admin' };
+      return next();
+    }
+
+    // 4. Supabase Auth JWT Verification
     try {
       const { data, error } = await supabaseAuth.auth.getUser(token);
       if (data && data.user) {
@@ -214,7 +222,7 @@ async function requireAdminAuth(req, res, next) {
     }
   }
 
-  // 4. Localhost loopback default — console convenience on the Store PC itself.
+  // 5. Localhost loopback default — console convenience on the Store PC itself.
   //
   // This must NOT apply to proxied traffic. cloudflared forwards to localhost:3000, so
   // every request arriving over the public tunnel presents as 127.0.0.1 and was being
@@ -763,7 +771,14 @@ app.post('/api/admin/login', (req, res) => {
     return res.status(401).json({ success: false, error: 'Invalid Admin PIN' });
   }
   const token = generateAdminSessionToken();
-  res.setHeader('Set-Cookie', `admin_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`);
+  // A hosted dashboard is a different origin from this server, and a SameSite=Lax
+  // cookie is never sent on a cross-site request. Browsers only accept SameSite=None
+  // over HTTPS, so fall back to Lax when serving plain HTTP on the shop LAN.
+  const crossSite = DEPLOYMENT_MODE === 'hosted' || req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const cookieAttrs = crossSite
+    ? 'Path=/; HttpOnly; Secure; SameSite=None; Max-Age=604800'
+    : 'Path=/; HttpOnly; SameSite=Lax; Max-Age=604800';
+  res.setHeader('Set-Cookie', `admin_session=${token}; ${cookieAttrs}`);
   return res.json({ success: true, token });
 });
 
