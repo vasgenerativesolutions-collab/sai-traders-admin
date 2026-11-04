@@ -1,155 +1,187 @@
-# 🧵 Sai Traders — WhatsApp Saree Intelligence Bot
+# Sai Traders — WhatsApp Commerce + TallyPrime Bridge
 
-An AI-powered WhatsApp Commerce & Visual Search bot built with **Supabase**, **Google Gemini 2.5 Flash**, **pgvector**, and **Meta WhatsApp Business Cloud API**.
+A retail platform for saree shops. Customers shop over WhatsApp using photos instead of search terms; every confirmed sale lands in the shop's existing **TallyPrime** books as a GST-compliant voucher, with no double entry.
 
----
-
-## 🌟 How It Works
-
-1. **Customer sends a photo** of any saree they liked (from Pinterest, Instagram, or a wedding).
-2. **Sai AI analyzes the photo**:
-   - Fabric identification (Pure Silk, Katan Silk, Georgette, Organza, Chanderi, etc.)
-   - Weave & Craft style (Kanjivaram, Banarasi, Bandhani, Patola, etc.)
-   - Color palette & accents (Primary, Secondary, Gold/Silver Zari)
-   - Pattern & Motifs (Peacock butis, Shikargah, Floral jaal, Bandhej dots)
-   - Border & Pallu craftsmanship (Temple borders, Cutwork, Gota patti)
-   - Occasion suitability & estimated retail price in INR
-3. **pgvector similarity search** queries the `saree_catalog` using 768-dimensional embeddings to find the closest matching sarees in stock.
-4. **Interactive WhatsApp catalog cards** are sent back with photos, prices, stock status, and select buttons.
-5. **Full conversational order placement**: Customer selects a saree → provides delivery address → receives confirmed order number (`SAI-1001`) with delivery tracking.
+Built by [KalpaCodes](https://github.com/vasgenerativesolutions-collab) for Shree Sai Traders, Tumakuru.
 
 ---
 
-## 📁 Repository Structure
+## The problem it solves
+
+A saree shop already runs on Tally. Putting it online usually means a second inventory that drifts from the first, and staff re-typing every web order into the accounts. This keeps Tally as the single source of truth and treats the web as another counter.
+
+Two hard parts, both solved here:
+
+- **Tally has no cloud API.** It listens on `localhost:9000` inside the shop, behind a consumer router. Covered in [the bridge](#2-the-store-pc-bridge).
+- **Online and walk-in sales share one rack.** Sell the same saree twice and someone is disappointed. Covered by [godown isolation](#godown-isolation).
+
+---
+
+## Architecture
+
+Three planes. Only the middle one lives in the shop.
 
 ```
-c:\sai_traders\
-├── .env.example                               # All environment variables template
-├── README.md                                  # Setup & deployment guide
-├── scripts/
-│   └── simulate_saree_flow.js                 # Local simulation script
-└── supabase/
-    ├── config.toml                            # Supabase CLI configuration
-    ├── migrations/
-    │   └── 20260928060239_init_saree_bot.sql  # Complete schema, pgvector, seed sarees
-    └── functions/
-        ├── _shared/
-        │   ├── supabase-client.ts             # Admin Supabase client helper
-        │   ├── whatsapp.ts                    # Meta Cloud API (Text, Image, Buttons, Media)
-        │   └── gemini.ts                      # Gemini 2.5 Flash Vision & text-embedding-004
-        ├── whatsapp-webhook/                  # Main WhatsApp webhook handler
-        │   └── index.ts
-        ├── catalog-manage/                    # Saree catalog CRUD with auto-embeddings
-        │   └── index.ts
-        └── generate-embeddings/               # Batch vector embedding utility
-            └── index.ts
+   CUSTOMER                      CLOUD                         IN THE SHOP
+ ┌──────────┐          ┌──────────────────────┐          ┌──────────────────┐
+ │ WhatsApp │─photo──▶ │  Supabase Edge Fn    │          │   Store PC       │
+ │          │          │  whatsapp-webhook    │          │                  │
+ │          │◀─cards───│         │            │          │  ┌────────────┐  │
+ └──────────┘          │         ▼            │          │  │ supervisor │  │
+                       │  Gemini 2.5 Flash    │          │  │  ├ server  │  │
+ ┌──────────┐          │  vision + embeddings │          │  │  ├ agent   │  │
+ │  Web     │──HTTP──▶ │         │            │          │  │  └ tunnel  │  │
+ │ storefront│         │         ▼            │          │  └─────┬──────┘  │
+ └──────────┘          │  Postgres + pgvector │◀─polls───┼────────┘         │
+                       │  22 tables, RLS      │──jobs───▶│        │         │
+ ┌──────────┐          │                      │          │        ▼         │
+ │  Admin   │──HTTPS─▶ │  Storage / R2 images │          │  TallyPrime      │
+ │ dashboard│          └──────────────────────┘          │  XML :9000       │
+ └──────────┘                                            └──────────────────┘
 ```
 
 ---
 
-## 🚀 Setup & Deployment Guide
+## 1. WhatsApp commerce
 
-### 1. Database Setup (Supabase)
+A customer photographs a saree — a wedding, a shop window, Instagram — and gets matches from live stock.
 
-1. Go to your [Supabase Dashboard](https://supabase.com/dashboard) and create a new project (e.g. `sai-traders-saree-bot`).
-2. Navigate to **SQL Editor** in your Supabase dashboard.
-3. Open and run the migration script:
-   [`supabase/migrations/20260928060239_init_saree_bot.sql`](file:///c:/sai_traders/supabase/migrations/20260928060239_init_saree_bot.sql)
-   - This enables `vector`, `uuid-ossp`, and `pgcrypto`.
-   - Creates `saree_catalog`, `customers`, `conversations`, `messages`, `orders`, `image_analyses`, and `app_config`.
-   - Creates the `match_sarees` cosine similarity search function.
-   - Creates the `saree-catalog-images` public storage bucket.
-   - Inserts 6 authentic seed sarees (Kanjivaram, Banarasi, Bandhani, Chanderi, Organza, Patola).
+1. **Vision extraction** (Gemini 2.5 Flash): fabric, weave style, colour palette, motifs, border and pallu craftsmanship, occasion, estimated price.
+2. **Vector match**: attributes become a 768-dimension embedding (`text-embedding-004`), searched against `saree_catalog` via pgvector HNSW cosine distance. Returns the closest 2–3 items **that are actually in stock**.
+3. **Interactive cards**: image, price, MRP and "Select this saree" buttons.
+4. **Conversational checkout**: name, address, phone → order number `SAI-XXXX`.
+5. **Tracking**: "Track SAI-1042" returns live status.
 
-Alternatively, if you link your project via Supabase CLI:
-```powershell
-supabase login
-supabase link --project-ref <your-project-ref>
-supabase db push
+Free-text works too — *"red silk sarees under ₹8000"* runs the same vector search.
+
+Inbound webhooks are HMAC-SHA256 verified and deduplicated on Meta's message ID, so a retry can never double-reply.
+
+## 2. The store PC bridge
+
+Tally is a desktop application on `127.0.0.1:9000`. No cloud service can reach it, and port-forwarding a shop router is not an option. So the shop PC **reaches out** and never accepts inbound connections.
+
+`scripts/store_supervisor.js` manages three children with auto-restart, log rotation and telemetry:
+
+| Child | Role |
+|---|---|
+| `admin/server.js` | local API and dashboard |
+| `agent/index.js` | polls Supabase for jobs, executes against Tally, writes results back via a SQLite outbox |
+| `cloudflared` | optional tunnel for remote dashboard access |
+
+**Why Tally integrations usually break, and what's done about it:**
+
+- *Tally's XML engine is single-threaded.* Two concurrent requests and it freezes or returns `Server Busy`. All traffic passes through a leaky-bucket queue at **concurrency 1 with 250 ms spacing**, with exponential-backoff retry.
+- *Network retries create duplicate invoices.* Every voucher carries an immutable `REMOTEID` and `VOUCHERKEY` derived from the order number, so a replay is a no-op rather than a second sale.
+- *Writing into the wrong company destroys books.* The active Tally company's GUID is bound to the registered shop identity. A mismatch **refuses to sync** rather than guessing.
+- *Only paid orders post.* Vouchers are raised exclusively for `payment_status = 'paid'`.
+
+### Godown isolation
+
+Online stock is quarantined to a dedicated Tally **godown** (warehouse location). The storefront can only sell what sits in that godown, so the counter and the website cannot sell the same physical saree. Billing terminals pair to a single godown and are refused if they request another.
+
+## 3. The admin dashboard
+
+Express + vanilla SPA, served on port `3000` locally or hosted centrally.
+
+| View | What it does |
+|---|---|
+| **Inventory** | catalogue CRUD, images, prices, per-godown stock, variant grouping into design families |
+| **Matcher** | upload a screenshot and see what the vector search returns — the AI debugging surface |
+| **Stock Log** | Tally sync history, discrepancy review and approval workflow |
+| **Analytics** | sales by period, order pipeline, customer directory |
+| **Videos** | build listings from reels — keyframe extraction into `video_record` |
+
+Plus system health tiles for WhatsApp, Supabase, Gemini and Tally, live stock polling, godown switching, and device management.
+
+### Terminal pairing
+
+A new billing PC shows a 6-character activation code (Zee5 style). An authenticated member enters it in the dashboard, names the terminal and picks its godown. The terminal is then locked to that godown. The device token identifies a terminal — it carries **no** owner authority, so a counter cannot delete products or adjust stock.
+
+## 4. Storefront API
+
+For an external web shop (Angular, Next.js, anything):
+
+```
+GET  /api/v1/store/products           catalogue, godown-scoped
+GET  /api/v1/store/products/:sku      single item
+POST /api/v1/store/orders             place an order
+POST /api/v1/inventory/holds/acquire  reserve stock during checkout
+POST /api/v1/inventory/holds/convert  hold → confirmed order
+POST /api/v1/inventory/holds/release  release on abandonment
+```
+
+API-key authenticated with constant-time comparison, and the key list is comma-separated so it can be rotated with no downtime. **Order totals are computed server-side from catalogue prices** — a client-supplied amount that disagrees is rejected, so the price cannot be tampered with in transit.
+
+---
+
+## Repository layout
+
+```
+admin/
+  server.js              Express API — catalogue, orders, Tally, godowns, devices
+  public/                dashboard SPA (index.html, app-v2.js, style.css)
+agent/
+  index.js               job worker daemon
+  poller.js              job dispatcher
+  jobs/                  preflight, read_godown_balances
+  tally_client.js        XML over HTTP to :9000
+  tally_queue.js         concurrency-1 leaky bucket
+  outbox.js              SQLite durability before cloud upload
+  credentials.js         DPAPI-encrypted device credentials
+desktop/
+  main.js                Electron wrapper, safeStorage keychain
+supabase/
+  migrations/            schema: pgvector, RLS on 22 tables, multi-shop scaffolding
+  functions/
+    whatsapp-webhook/    Meta Graph API v21.0 handler
+    _shared/             gemini.ts, whatsapp.ts, supabase-client.ts
+scripts/
+  store_supervisor.js    process supervisor + watchdog
+  get_tunnel_url.js      tunnel discovery with reachability verification
+  test_*.js              regression suites
+  dangerous/             production-mutating utilities, excluded from store kits
+store_install/           distribution kit for the shop PC
+install_kit/             installer payload
 ```
 
 ---
 
-### 2. Configure Environment Secrets
+## Setup
 
-In Supabase Dashboard -> **Project Settings** -> **Edge Functions** (or via `supabase secrets set`):
+**Requirements:** Node.js 18+, a Supabase project, a Meta WhatsApp Business number, a Gemini API key, and TallyPrime with the XML server enabled on port 9000 (`F1 → Settings → Connectivity → acts as: Both`).
 
 ```bash
-supabase secrets set \
-  SUPABASE_URL="https://your-project.supabase.co" \
-  SUPABASE_SERVICE_ROLE_KEY="your-service-role-key" \
-  WHATSAPP_ACCESS_TOKEN="your-meta-system-user-access-token" \
-  WHATSAPP_PHONE_NUMBER_ID="your-whatsapp-phone-number-id" \
-  WHATSAPP_APP_SECRET="your-meta-app-secret" \
-  WHATSAPP_VERIFY_TOKEN="sai_traders_webhook_secret_2026" \
-  GEMINI_API_KEY="your-google-ai-studio-gemini-key" \
-  GEMINI_MODEL="gemini-2.5-flash"
+npm install
+cp .env.example .env     # fill in every value — there are no defaults
+npm run check-env        # verify every external service responds
+npm run admin            # dashboard at http://localhost:3000
+npm run agent            # Tally job worker
+```
+
+In a shop, run `START_STORE_PC.bat` instead — it starts the supervisor, which manages all three processes.
+
+```bash
+npm test                 # Tally flow
+node scripts/test_unallocated_stock.js   # stock attribution + delta arithmetic
+node scripts/test_auth_gates.js          # authorisation + output escaping
+node scripts/test_tunnel_url.js          # LAN discovery
 ```
 
 ---
 
-### 3. Deploy Edge Functions
+## Security notes
 
-Deploy the three functions to your Supabase project:
+- **No secrets in source.** Every credential is read from the environment; the server refuses to start without `ADMIN_PIN`. `.env` files are gitignored.
+- **RLS everywhere.** Writes are `service_role`-only across 22 tables. Public reads are limited to four non-sensitive tables.
+- **Output escaping.** All untrusted values — notably WhatsApp profile names, which an outsider controls — are HTML-escaped before rendering.
+- **Rate limiting.** Dependency-free fixed-window limiter: 10/min on auth, 60 on mutations, 300 on reads.
+- **Deployment mode.** `DEPLOYMENT_MODE=hosted` requires every request to authenticate. `local` permits the loopback convenience path on the shop PC itself.
+- **Store devices hold no master keys.** Credentials are DPAPI-encrypted via Electron `safeStorage`.
 
-```powershell
-supabase functions deploy whatsapp-webhook --no-verify-jwt
-supabase functions deploy catalog-manage --no-verify-jwt
-supabase functions deploy generate-embeddings --no-verify-jwt
-```
-
----
-
-### 4. Generate Initial Catalog Embeddings
-
-Once deployed, generate the vector embeddings for the 6 initial seed sarees with one HTTP GET request:
-
-```powershell
-curl -X GET "https://your-project.supabase.co/functions/v1/generate-embeddings" \
-  -H "Authorization: Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
-```
-
-This will run each saree through Gemini's `text-embedding-004` and save the 768-dimensional vectors directly into the `embedding` column of `saree_catalog`.
+A known limitation: per-item, per-godown stock requires **Maintain Batch-wise details** enabled in Tally. Without it Tally's XML export reports godown totals and item totals but never the cross-tabulation, so items without a batch allocation cannot be placed in a godown.
 
 ---
 
-### 5. Configure Meta WhatsApp Webhook
+## Licence
 
-1. Go to [developers.facebook.com](https://developers.facebook.com/) -> Your WhatsApp Business App.
-2. Under **WhatsApp** -> **Configuration**:
-   - **Callback URL**: `https://<your-project-ref>.supabase.co/functions/v1/whatsapp-webhook`
-   - **Verify Token**: `sai_traders_webhook_secret_2026` (matching your `WHATSAPP_VERIFY_TOKEN`)
-3. Click **Verify and Save**.
-4. In Webhook Fields, subscribe to **`messages`**.
-
----
-
-## 💬 WhatsApp Conversation State Machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> idle: Customer starts chat
-    idle --> analyzing_image: Customer sends photo
-    idle --> browsing: Customer searches via text ("show me silk sarees")
-    idle --> checking_order: Customer types "Track SAI-1001"
-
-    analyzing_image --> showing_results: Gemini extracts attributes & finds matches
-    analyzing_image --> no_match: No matching saree in stock
-
-    showing_results --> product_detail: Customer selects Option #1 or #2
-    product_detail --> collecting_address: Customer taps "Buy Now" (new address)
-    product_detail --> order_placed: Customer taps "Buy Now" (address on file)
-
-    collecting_address --> order_placed: Customer sends address text
-    order_placed --> idle: Confirmation sent with Order #
-```
-
----
-
-## 🧪 Testing Locally
-
-Run the end-to-end conversation simulator:
-
-```powershell
-node scripts/simulate_saree_flow.js
-```
+Proprietary. © KalpaCodes.
