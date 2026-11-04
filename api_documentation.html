@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sai Traders — Storefront REST API & Integration Specification</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 1.2cm 1.4cm 1.2cm 1.4cm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #0f172a;
+      background: #ffffff;
+      line-height: 1.45;
+      font-size: 9pt;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    .doc-page {
+      page-break-after: always;
+      position: relative;
+      height: 268mm;
+      max-height: 268mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    .doc-page:last-child {
+      page-break-after: avoid;
+    }
+
+    .page-content {
+      flex: 1;
+    }
+
+    /* Cover / Header Banner */
+    .header-banner {
+      background: linear-gradient(135deg, #090d16 0%, #1e1b4b 60%, #311042 100%);
+      color: #ffffff;
+      padding: 1.6rem 1.8rem;
+      border-radius: 10px;
+      margin-bottom: 1.2rem;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      position: relative;
+    }
+
+    .doc-badge {
+      display: inline-block;
+      background: rgba(245, 158, 11, 0.2);
+      border: 1px solid #f59e0b;
+      color: #fbbf24;
+      padding: 0.2rem 0.6rem;
+      font-size: 7.5pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-radius: 9999px;
+      margin-bottom: 0.5rem;
+    }
+
+    .header-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 19pt;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 0.3rem;
+      color: #ffffff;
+    }
+
+    .header-subtitle {
+      font-size: 9.5pt;
+      color: #cbd5e1;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.6rem;
+      margin-top: 1rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .meta-item .label {
+      color: #94a3b8;
+      text-transform: uppercase;
+      font-size: 6.5pt;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .meta-item .value {
+      font-weight: 600;
+      color: #f8fafc;
+      font-size: 8pt;
+    }
+
+    /* Headings */
+    h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 11.5pt;
+      font-weight: 700;
+      color: #0f172a;
+      margin-top: 0.9rem;
+      margin-bottom: 0.4rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1.5px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 9.5pt;
+      font-weight: 700;
+      color: #1e293b;
+      margin-top: 0.6rem;
+      margin-bottom: 0.3rem;
+    }
+
+    p {
+      margin-bottom: 0.5rem;
+      color: #334155;
+      font-size: 8.8pt;
+    }
+
+    /* Callout Boxes */
+    .callout {
+      border-radius: 6px;
+      padding: 0.65rem 0.9rem;
+      margin: 0.6rem 0;
+      font-size: 8.5pt;
+      border-left: 3.5px solid;
+    }
+
+    .callout-blue {
+      background: #f0f9ff;
+      border-color: #0284c7;
+      color: #0369a1;
+    }
+
+    .callout-emerald {
+      background: #ecfdf5;
+      border-color: #10b981;
+      color: #065f46;
+    }
+
+    .callout strong {
+      font-weight: 700;
+      display: block;
+      margin-bottom: 0.15rem;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.5rem 0 0.8rem 0;
+      font-size: 8.2pt;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #0f172a;
+      font-weight: 700;
+      text-align: left;
+      padding: 0.45rem 0.65rem;
+      border: 1px solid #cbd5e1;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    td {
+      padding: 0.4rem 0.65rem;
+      border: 1px solid #e2e8f0;
+      color: #334155;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    /* Method Badges */
+    .method-badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 7.2pt;
+      font-weight: 700;
+      padding: 0.15rem 0.45rem;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+
+    .method-get {
+      background: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+    }
+
+    .method-post {
+      background: #dcfce7;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+
+    /* Code Blocks */
+    pre {
+      background: #0b0f19;
+      color: #f8fafc;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 7.4pt;
+      line-height: 1.4;
+      padding: 0.65rem 0.85rem;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 0.45rem 0 0.65rem 0;
+      border: 1px solid #334155;
+    }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 7.8pt;
+      background: #f1f5f9;
+      color: #b91c1c;
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      border: 1px solid #e2e8f0;
+    }
+
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      border: none;
+      font-size: inherit;
+    }
+
+    .code-comment { color: #64748b; }
+    .code-key { color: #38bdf8; }
+    .code-string { color: #a5f3fc; }
+    .code-num { color: #fbbf24; }
+    .code-bool { color: #34d399; }
+
+    /* API Key Highlight Card */
+    .key-card {
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      border: 1.5px solid #d97706;
+      border-radius: 8px;
+      padding: 0.85rem 1.1rem;
+      margin: 0.7rem 0;
+      color: #ffffff;
+    }
+
+    .key-header {
+      font-size: 7.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #fbbf24;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .key-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5pt;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: 0.05em;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 0.35rem 0.75rem;
+      border-radius: 5px;
+      border: 1px dashed rgba(255, 255, 255, 0.2);
+      display: inline-block;
+      margin-bottom: 0.35rem;
+    }
+
+    .key-note {
+      font-size: 7.5pt;
+      color: #cbd5e1;
+    }
+
+    /* Page Footers */
+    .doc-footer {
+      padding-top: 0.5rem;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      font-size: 7.2pt;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========================================================================= -->
+  <!-- PAGE 1: COVER, CREDENTIALS, CORS & ENDPOINT SITEMAP                       -->
+  <!-- ========================================================================= -->
+  <div class="doc-page">
+    <div class="page-content">
+      <div class="header-banner">
+        <div class="doc-badge">Official Technical Specification • v1.0.0</div>
+        <h1 class="header-title">Sai Traders — Storefront REST API</h1>
+        <div class="header-subtitle">
+          External Integration Specification for Angular & Web Storefront Applications
+        </div>
+        <div class="meta-grid">
+          <div class="meta-item">
+            <div class="label">Public Cloud Host</div>
+            <div class="value" style="font-size: 6.5pt; word-break: break-all;">https://tunes-incidence-minutes-examples.trycloudflare.com</div>
+          </div>
+          <div class="meta-item">
+            <div class="label">Auth Mechanism</div>
+            <div class="value">x-api-key Header</div>
+          </div>
+          <div class="meta-item">
+            <div class="label">Target Godown</div>
+            <div class="value">Sarees (Dedicated)</div>
+          </div>
+          <div class="meta-item">
+            <div class="label">ERP Sync Targets</div>
+            <div class="value">TallyPrime & Sheets</div>
+          </div>
+        </div>
+      </div>
+
+      <h2>🔐 1. Authentication & API Key Credential</h2>
+      <p>
+        All endpoints under <code>/api/v1/store/*</code> require an authenticated API key. Requests without this header or with an invalid key will immediately return HTTP <code>401 Unauthorized</code>.
+      </p>
+
+      <div class="key-card">
+        <div class="key-header">Storefront API Key (Required in all HTTP Requests)</div>
+        <div class="key-value">sai_store_live_sec_892176</div>
+        <div class="key-note">
+          Pass this key in the <code>x-api-key</code> HTTP header (or as <code>Authorization: Bearer sai_store_live_sec_892176</code>).
+        </div>
+      </div>
+
+      <div class="callout callout-emerald">
+        <strong>🌐 Cross-Origin Resource Sharing (CORS) Policy</strong>
+        CORS is fully enabled with <code>Access-Control-Allow-Origin: *</code> and preflight <code>OPTIONS</code> support. Your Angular app running on <code>http://localhost:4200</code> or your live production domain can make direct HTTP requests without browser CORS errors.
+      </div>
+
+      <h2>📋 2. Storefront Endpoints Summary</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 14%;">Method</th>
+            <th style="width: 32%;">Endpoint Path</th>
+            <th style="width: 24%;">Headers</th>
+            <th style="width: 30%;">Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="method-badge method-get">GET</span></td>
+            <td><code>/api/v1/store/products</code></td>
+            <td><code>x-api-key</code></td>
+            <td>Fetch active catalog with photos, live inventory, and color variant trees.</td>
+          </tr>
+          <tr>
+            <td><span class="method-badge method-get">GET</span></td>
+            <td><code>/api/v1/store/products/:sku</code></td>
+            <td><code>x-api-key</code></td>
+            <td>Lookup single saree or color group by base SKU (e.g. <code>SAI-VAR-01</code>).</td>
+          </tr>
+          <tr>
+            <td><span class="method-badge method-post">POST</span></td>
+            <td><code>/api/v1/store/orders</code></td>
+            <td><code>x-api-key</code><br/><code>Content-Type: app/json</code></td>
+            <td><strong>Purchase Webhook:</strong> Deducts stock, creates Tally Sales Voucher, and logs to Sheets.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>🧪 3. Interactive Web Test Simulator</h2>
+      <p>
+        An interactive simulator testbed is deployed on the backend to preview catalog display, test color variant swatches, and simulate order webhooks live:
+      </p>
+      <div class="callout callout-blue">
+        <strong>Live Web Simulator:</strong>
+        <span style="font-weight: 700; color: #0284c7; word-break: break-all;">https://tunes-incidence-minutes-examples.trycloudflare.com/api-test</span>
+        <div style="font-size: 7.8pt; margin-top: 2px; color: #475569;">
+          Includes live real-time API telemetry stream, one-click 401 test, and three-way sync checkmarks.
+        </div>
+      </div>
+    </div>
+
+    <div class="doc-footer">
+      <div>Sai Traders — Retail Operations & ERP Integration</div>
+      <div>Page 1 of 4</div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- PAGE 2: CATALOG RETRIEVAL & COLOR VARIANTS SCHEMA                         -->
+  <!-- ========================================================================= -->
+  <div class="doc-page">
+    <div class="page-content">
+      <h2>🥻 4. Catalog Retrieval: <code>GET /api/v1/store/products</code></h2>
+      <p>
+        Returns published sarees ready for online storefront display. If an item has multiple colors (e.g., Maroon Red, Royal Blue, Emerald Green), it is marked with <code>"is_group": true</code> and contains a <code>variants</code> array with color swatches and individual variant stock.
+      </p>
+
+      <h3>Query Parameters</h3>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 22%;">Parameter</th>
+            <th style="width: 14%;">Type</th>
+            <th style="width: 16%;">Default</th>
+            <th style="width: 48%;">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>in_stock_only</code></td>
+            <td>Boolean</td>
+            <td><code>false</code></td>
+            <td>When set to <code>true</code>, only returns products currently in stock (> 0).</td>
+          </tr>
+          <tr>
+            <td><code>search</code></td>
+            <td>String</td>
+            <td>(none)</td>
+            <td>Case-insensitive search across saree name, fabric, or weave.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>cURL Request Example</h3>
+      <pre><code>curl -X GET "https://tunes-incidence-minutes-examples.trycloudflare.com/api/v1/store/products?in_stock_only=true" \
+  -H "x-api-key: sai_store_live_sec_892176"</code></pre>
+
+      <h3>Catalog Response Schema (Truncated Sample)</h3>
+      <pre><code>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"count"</span>: <span class="code-num">9</span>,
+  <span class="code-key">"target_godown"</span>: <span class="code-string">"Sarees"</span>,
+  <span class="code-key">"products"</span>: [
+    {
+      <span class="code-key">"id"</span>: <span class="code-string">"7923a3cc-9934-4453-85db-6ea914e1d690"</span>,
+      <span class="code-key">"sku"</span>: <span class="code-string">"SAI-VAR-01"</span>,
+      <span class="code-key">"name"</span>: <span class="code-string">"Royal Zari Heritage Silk Saree"</span>,
+      <span class="code-key">"fabric"</span>: <span class="code-string">"Pure Kanjivaram Silk"</span>,
+      <span class="code-key">"weave"</span>: <span class="code-string">"Traditional Zari"</span>,
+      <span class="code-key">"price"</span>: <span class="code-num">4800</span>,
+      <span class="code-key">"mrp"</span>: <span class="code-num">6500</span>,
+      <span class="code-key">"stock"</span>: <span class="code-num">13</span>,
+      <span class="code-key">"in_stock"</span>: <span class="code-bool">true</span>,
+      <span class="code-key">"image_urls"</span>: [<span class="code-string">"https://.../saree-catalog-images/sai_var_01.jpg"</span>],
+      <span class="code-key">"is_group"</span>: <span class="code-bool">true</span>,
+      <span class="code-key">"variants"</span>: [
+        {
+          <span class="code-key">"sku"</span>: <span class="code-string">"SAI-VAR-01-RED"</span>,
+          <span class="code-key">"name"</span>: <span class="code-string">"Royal Zari Heritage Silk Saree (Maroon Red)"</span>,
+          <span class="code-key">"color"</span>: <span class="code-string">"Maroon Red"</span>,
+          <span class="code-key">"price"</span>: <span class="code-num">4800</span>,
+          <span class="code-key">"stock"</span>: <span class="code-num">6</span>,
+          <span class="code-key">"in_stock"</span>: <span class="code-bool">true</span>
+        },
+        {
+          <span class="code-key">"sku"</span>: <span class="code-string">"SAI-VAR-01-BLU"</span>,
+          <span class="code-key">"name"</span>: <span class="code-string">"Royal Zari Heritage Silk Saree (Royal Blue)"</span>,
+          <span class="code-key">"color"</span>: <span class="code-string">"Royal Blue"</span>,
+          <span class="code-key">"price"</span>: <span class="code-num">4800</span>,
+          <span class="code-key">"stock"</span>: <span class="code-num">4</span>,
+          <span class="code-key">"in_stock"</span>: <span class="code-bool">true</span>
+        }
+      ]
+    }
+  ]
+}</code></pre>
+
+      <h2>🔍 5. Single SKU / Group Lookup: <code>GET /api/v1/store/products/:sku</code></h2>
+      <p>
+        Fetch details for an individual saree product page. Supports querying by base color family SKU (e.g. <code>SAI-VAR-01</code>) or by exact variant SKU (e.g. <code>SAI-VAR-01-BLU</code>).
+      </p>
+    </div>
+
+    <div class="doc-footer">
+      <div>Sai Traders — Retail Operations & ERP Integration</div>
+      <div>Page 2 of 4</div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- PAGE 3: POST-PURCHASE ORDER WEBHOOK & THREE-WAY SYNC                      -->
+  <!-- ========================================================================= -->
+  <div class="doc-page">
+    <div class="page-content">
+      <h2>📦 6. Post-Purchase Webhook: <code>POST /api/v1/store/orders</code></h2>
+      <p>
+        Called by your Angular website when a customer finishes payment. The backend processes the purchase atomically across three systems:
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin: 0.6rem 0;">
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem 0.7rem;">
+          <div style="font-size: 7.2pt; font-weight: 700; color: #0284c7; text-transform: uppercase;">1. Database Inventory</div>
+          <div style="font-size: 8pt; margin-top: 2px;">Decrements quantity in <code>saree_catalog</code> and <code>stock_pool</code>.</div>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem 0.7rem;">
+          <div style="font-size: 7.2pt; font-weight: 700; color: #059669; text-transform: uppercase;">2. TallyPrime ERP</div>
+          <div style="font-size: 8pt; margin-top: 2px;">Posts Sales Voucher under active <strong>Sarees</strong> godown.</div>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem 0.7rem;">
+          <div style="font-size: 7.2pt; font-weight: 700; color: #d97706; text-transform: uppercase;">3. Google Sheets</div>
+          <div style="font-size: 8pt; margin-top: 2px;">Appends transaction row to daily sales spreadsheet.</div>
+        </div>
+      </div>
+
+      <h3>Request Headers</h3>
+      <pre><code>Content-Type: application/json
+x-api-key: sai_store_live_sec_892176</code></pre>
+
+      <h3>cURL Webhook Request</h3>
+      <pre><code>curl -X POST "https://tunes-incidence-minutes-examples.trycloudflare.com/api/v1/store/orders" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sai_store_live_sec_892176" \
+  -d '{
+    "order_id": "ANG-2026-9042",
+    "customer": {
+      "name": "Priya Sharma",
+      "phone": "+919876543210",
+      "email": "priya.sharma@example.com",
+      "address": "Flat 402, Lotus Enclave, Indiranagar, Bengaluru, KA 560038"
+    },
+    "items": [
+      {
+        "sku": "SAI-VAR-01-BLU",
+        "name": "Royal Zari Heritage Silk Saree (Royal Blue)",
+        "quantity": 1,
+        "price": 4800
+      }
+    ],
+    "total_amount": 4800,
+    "payment_status": "paid",
+    "payment_method": "Razorpay / UPI",
+    "notes": "Express delivery requested"
+  }'</code></pre>
+
+      <h3>JSON Response Schema</h3>
+      <pre><code>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"Order [ANG-2026-9042] received! Inventory updated, Tally Sarees godown synced, and Google Sheets logged."</span>,
+  <span class="code-key">"order_number"</span>: <span class="code-string">"ANG-2026-9042"</span>,
+  <span class="code-key">"stock_updates"</span>: [
+    { <span class="code-key">"sku"</span>: <span class="code-string">"SAI-VAR-01-BLU"</span>, <span class="code-key">"deducted"</span>: <span class="code-num">1</span> }
+  ],
+  <span class="code-key">"tally_synced"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"sheets_synced"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"target_godown"</span>: <span class="code-string">"Sarees"</span>
+}</code></pre>
+    </div>
+
+    <div class="doc-footer">
+      <div>Sai Traders — Retail Operations & ERP Integration</div>
+      <div>Page 3 of 4</div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- PAGE 4: ANGULAR TYPESCRIPT CODE & ERROR REFERENCE                         -->
+  <!-- ========================================================================= -->
+  <div class="doc-page">
+    <div class="page-content">
+      <h2>💻 7. Angular TypeScript Integration Snippet</h2>
+      <p>
+        Copy-paste ready Angular Service utilizing standard <code>HttpClient</code>:
+      </p>
+
+      <pre><code><span class="code-comment">// src/app/services/saree-store.service.ts</span>
+<span class="code-key">import</span> { Injectable } <span class="code-key">from</span> <span class="code-string">'@angular/core'</span>;
+<span class="code-key">import</span> { HttpClient, HttpHeaders } <span class="code-key">from</span> <span class="code-string">'@angular/common/http'</span>;
+<span class="code-key">import</span> { Observable } <span class="code-key">from</span> <span class="code-string">'rxjs'</span>;
+
+@Injectable({ providedIn: <span class="code-string">'root'</span> })
+<span class="code-key">export class</span> SareeStoreService {
+  <span class="code-key">private</span> baseUrl = <span class="code-string">'https://tunes-incidence-minutes-examples.trycloudflare.com/api/v1/store'</span>;
+  <span class="code-key">private</span> apiKey = <span class="code-string">'sai_store_live_sec_892176'</span>;
+
+  <span class="code-key">constructor</span>(<span class="code-key">private</span> http: HttpClient) {}
+
+  <span class="code-key">private</span> getHeaders(): HttpHeaders {
+    <span class="code-key">return new</span> HttpHeaders({
+      <span class="code-string">'Content-Type'</span>: <span class="code-string">'application/json'</span>,
+      <span class="code-string">'x-api-key'</span>: <span class="code-key">this</span>.apiKey
+    });
+  }
+
+  <span class="code-comment">/** 1. Fetch Saree Catalog */</span>
+  getProducts(): Observable&lt;<span class="code-key">any</span>&gt; {
+    <span class="code-key">return this</span>.http.get(<span class="code-string">`${this.baseUrl}/products`</span>, { headers: <span class="code-key">this</span>.getHeaders() });
+  }
+
+  <span class="code-comment">/** 2. Fetch Single Saree or Color Group by SKU */</span>
+  getProductBySku(sku: <span class="code-key">string</span>): Observable&lt;<span class="code-key">any</span>&gt; {
+    <span class="code-key">return this</span>.http.get(<span class="code-string">`${this.baseUrl}/products/${encodeURIComponent(sku)}`</span>, { 
+      headers: <span class="code-key">this</span>.getHeaders() 
+    });
+  }
+
+  <span class="code-comment">/** 3. Notify Backend of Completed Checkout (Triggers Tally + Google Sheets) */</span>
+  submitOrder(orderPayload: <span class="code-key">any</span>): Observable&lt;<span class="code-key">any</span>&gt; {
+    <span class="code-key">return this</span>.http.post(<span class="code-string">`${this.baseUrl}/orders`</span>, orderPayload, { 
+      headers: <span class="code-key">this</span>.getHeaders() 
+    });
+  }
+}</code></pre>
+
+      <h2>❓ 8. Error Codes & Troubleshooting</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 18%;">HTTP Status</th>
+            <th style="width: 28%;">Root Cause</th>
+            <th style="width: 54%;">Corrective Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>401 Unauthorized</code></td>
+            <td>Missing or wrong API key</td>
+            <td>Include <code>x-api-key: sai_store_live_sec_892176</code> in request headers.</td>
+          </tr>
+          <tr>
+            <td><code>400 Bad Request</code></td>
+            <td>Empty items array or missing SKU</td>
+            <td>Ensure <code>items</code> is a non-empty array with valid <code>sku</code> and <code>quantity</code>.</td>
+          </tr>
+          <tr>
+            <td><code>404 Not Found</code></td>
+            <td>SKU not found in catalog</td>
+            <td>Verify SKU exists against <code>GET /api/v1/store/products</code>.</td>
+          </tr>
+          <tr>
+            <td><code>500 Server Error</code></td>
+            <td>Internal exception</td>
+            <td>Check admin server log or open <code>/api-test</code> simulator to inspect stack trace.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="doc-footer">
+      <div>Sai Traders — Retail Operations & ERP Integration</div>
+      <div>Page 4 of 4 • Confidential</div>
+    </div>
+  </div>
+
+</body>
+</html>

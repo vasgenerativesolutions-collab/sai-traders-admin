@@ -1,0 +1,3281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Sai Traders — Retail Operations & Inventory Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20261029_hotfix10">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    /* =========================================================================
+       MODERN LUXURY FASHION CATALOG DESIGN SYSTEM
+       High-end fashion e-commerce: minimal cards, full-width photo, subtle type
+       ========================================================================= */
+
+    /* Grid Layout - Balanced, breathable luxury grid */
+    .inventory-grid {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)) !important;
+      gap: 20px !important;
+      align-items: stretch !important;
+    }
+
+    /* Luxury Fashion Card Container */
+    .inventory-card {
+      background: linear-gradient(180deg, #0e1524 0%, #080c14 100%) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-radius: 8px !important;
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+      height: 100% !important;
+      transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.28s ease !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
+    }
+    .inventory-card:hover {
+      transform: translateY(-4px) !important;
+      border-color: rgba(255, 255, 255, 0.2) !important;
+      box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+    }
+
+    /* Full-Width Editorial Photo Frame */
+    .card-media {
+      position: relative !important;
+      height: 260px !important; /* Ideal luxury fashion portrait frame */
+      width: 100% !important;
+      aspect-ratio: unset !important;
+      background: radial-gradient(circle at 50% 40%, #151e2f 0%, #060910 100%) !important;
+      overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    }
+    .card-media img {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: contain !important; /* Perfectly fitted inside the box without cropping */
+      object-position: center center !important;
+      display: block !important;
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    .inventory-card:hover .card-media img {
+      transform: scale(1.03) !important;
+    }
+
+    /* Minimalist Frosted Stock Pill Overlay */
+    .stock-tag {
+      position: absolute !important;
+      top: 10px !important;
+      right: 10px !important;
+      padding: 3px 8px !important;
+      border-radius: 4px !important;
+      font-size: 10px !important;
+      font-family: var(--font-sans) !important;
+      font-weight: 500 !important;
+      letter-spacing: 0.02em !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 5px !important;
+      backdrop-filter: blur(10px) !important;
+      -webkit-backdrop-filter: blur(10px) !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+      z-index: 2 !important;
+    }
+    .stock-tag.in-stock {
+      background: rgba(10, 25, 20, 0.85) !important;
+      border: 1px solid rgba(52, 211, 153, 0.35) !important;
+      color: #6ee7b7 !important;
+    }
+    .stock-tag.out-of-stock {
+      background: rgba(30, 15, 15, 0.85) !important;
+      border: 1px solid rgba(248, 113, 113, 0.35) !important;
+      color: #fca5a5 !important;
+    }
+    .stock-dot {
+      width: 6px !important;
+      height: 6px !important;
+      border-radius: 50% !important;
+      display: inline-block !important;
+    }
+    .stock-dot.in-stock {
+      background: #34d399 !important;
+      box-shadow: 0 0 6px rgba(52, 211, 153, 0.7) !important;
+    }
+    .stock-dot.out-of-stock {
+      background: #f87171 !important;
+      box-shadow: 0 0 6px rgba(248, 113, 113, 0.7) !important;
+    }
+
+    /* Product Details Body */
+    .card-body {
+      padding: 14px 14px 12px 14px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      flex: 1 !important;
+    }
+
+    /* Minimalist SKU & Metadata Line */
+    .sku-line {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      margin-bottom: 5px !important;
+    }
+    .sku-code {
+      font-family: var(--font-mono) !important;
+      font-size: 10px !important;
+      font-weight: 600 !important;
+      color: #64748b !important;
+      background: rgba(255, 255, 255, 0.04) !important;
+      border: 1px solid rgba(255, 255, 255, 0.07) !important;
+      padding: 1px 6px !important;
+      border-radius: 3px !important;
+      letter-spacing: 0.05em !important;
+      text-transform: uppercase !important;
+    }
+    .sku-badges-row {
+      display: flex !important;
+      align-items: center !important;
+      gap: 5px !important;
+    }
+    .group-badge {
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.04em !important;
+      padding: 2px 6px !important;
+      border-radius: 3px !important;
+      background: rgba(168, 85, 247, 0.12) !important;
+      color: #c084fc !important;
+      border: 1px solid rgba(168, 85, 247, 0.28) !important;
+    }
+    .tally-status-badge {
+      font-size: 9.5px !important;
+      font-weight: 500 !important;
+      padding: 2px 6px !important;
+      border-radius: 3px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+    }
+    .tally-status-badge.synced {
+      color: #34d399 !important;
+      background: rgba(16, 185, 129, 0.08) !important;
+      border: 1px solid rgba(16, 185, 129, 0.2) !important;
+    }
+    .tally-status-badge.pending {
+      color: #fbbf24 !important;
+      background: rgba(245, 158, 11, 0.08) !important;
+      border: 1px solid rgba(245, 158, 11, 0.2) !important;
+    }
+    .video-status-indicator {
+      font-size: 9.5px !important;
+      color: #64748b !important;
+    }
+    .video-status-indicator.attached {
+      color: #38bdf8 !important;
+      font-weight: 500 !important;
+    }
+
+    /* Subtle Luxury Product Title */
+    .card-title {
+      font-size: 14px !important;
+      font-weight: 600 !important;
+      color: #f8fafc !important;
+      line-height: 1.35 !important;
+      margin: 2px 0 6px 0 !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 2 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
+      min-height: 38px !important;
+      letter-spacing: -0.01em !important;
+    }
+
+    /* Tally Stock Group Folder Card UI */
+    .folder-card {
+      cursor: pointer !important;
+      background: linear-gradient(145deg, #1e293b, #0f172a) !important;
+      border: 2px dashed rgba(56, 189, 248, 0.4) !important;
+      border-radius: var(--radius-lg) !important;
+      padding: 24px 18px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      text-align: center !important;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      min-height: 290px !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+    }
+    .folder-card:hover {
+      transform: translateY(-5px) !important;
+      border-color: #38bdf8 !important;
+      border-style: solid !important;
+      box-shadow: 0 16px 36px rgba(56, 189, 248, 0.22) !important;
+      background: linear-gradient(145deg, #24344d, #111c30) !important;
+    }
+    .folder-card .folder-icon-large {
+      font-size: 54px !important;
+      line-height: 1 !important;
+      margin-bottom: 12px !important;
+      filter: drop-shadow(0 6px 16px rgba(56, 189, 248, 0.35)) !important;
+      transition: transform 0.25s ease !important;
+    }
+    .folder-card:hover .folder-icon-large {
+      transform: scale(1.12) !important;
+    }
+    .folder-card .folder-title {
+      font-size: 18px !important;
+      font-weight: 800 !important;
+      color: #ffffff !important;
+      margin: 0 0 6px 0 !important;
+      letter-spacing: 0.02em !important;
+    }
+    .folder-card .folder-badge {
+      font-size: 10px !important;
+      font-weight: 700 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.08em !important;
+      color: #38bdf8 !important;
+      background: rgba(56, 189, 248, 0.14) !important;
+      border: 1px solid rgba(56, 189, 248, 0.3) !important;
+      padding: 2px 10px !important;
+      border-radius: 12px !important;
+      margin-bottom: 12px !important;
+      display: inline-block !important;
+    }
+    .folder-card .folder-stats {
+      font-size: 13px !important;
+      font-weight: 700 !important;
+      color: #cbd5e1 !important;
+      margin-bottom: 12px !important;
+    }
+    .folder-card .folder-action-hint {
+      font-size: 11.5px !important;
+      font-weight: 600 !important;
+      color: #38bdf8 !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+    }
+
+    /* Refined Luxury Pricing Hierarchy */
+    .card-pricing {
+      display: flex !important;
+      align-items: baseline !important;
+      gap: 7px !important;
+      margin-bottom: 7px !important;
+    }
+    .price-current {
+      font-size: 17px !important;
+      font-weight: 700 !important;
+      color: #ffffff !important;
+      letter-spacing: -0.02em !important;
+      font-family: var(--font-sans) !important;
+    }
+    .price-mrp {
+      font-size: 11.5px !important;
+      color: #64748b !important;
+      text-decoration: line-through !important;
+      font-family: var(--font-sans) !important;
+    }
+    .discount-pill {
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      color: #f87171 !important;
+      background: rgba(239, 68, 68, 0.12) !important;
+      border: 1px solid rgba(239, 68, 68, 0.25) !important;
+      padding: 1px 6px !important;
+      border-radius: 3px !important;
+      letter-spacing: 0.02em !important;
+    }
+
+    /* STRICTLY SQUARE Color Variant Selector (NO Blue Outline) */
+    .color-variants-container {
+      margin: 5px 0 7px 0 !important;
+      padding: 6px 8px !important;
+      background: rgba(15, 23, 42, 0.45) !important;
+      border: 1px solid rgba(255, 255, 255, 0.05) !important;
+      border-radius: 4px !important;
+    }
+    .color-variant-label {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      margin-bottom: 5px !important;
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      color: #94a3b8 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.04em !important;
+    }
+    .color-variant-total {
+      color: #34d399 !important;
+      font-family: var(--font-mono) !important;
+      font-weight: 600 !important;
+    }
+    .color-variant-pills {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+    }
+    .color-pill {
+      border-radius: 0px !important; /* STRICTLY SQUARE */
+      padding: 3px 6px !important;
+      font-size: 10px !important;
+      font-weight: 500 !important;
+      background: #0f172a !important;
+      border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      color: #cbd5e1 !important;
+      outline: none !important;
+      box-shadow: none !important;
+      cursor: pointer !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 5px !important;
+      transition: all 0.15s ease !important;
+    }
+    .color-pill:hover {
+      background: #172033 !important;
+      border-color: rgba(255, 255, 255, 0.3) !important;
+      color: #ffffff !important;
+    }
+    .color-pill:focus,
+    .color-pill:focus-visible {
+      outline: none !important;
+      box-shadow: none !important;
+    }
+    .color-pill.active {
+      border: 1px solid rgba(255, 255, 255, 0.55) !important; /* Clean neutral border - NO blue outline */
+      border-radius: 0px !important;
+      outline: none !important;
+      box-shadow: none !important;
+      background: #1e293b !important;
+      color: #ffffff !important;
+    }
+    .color-pill.active:focus,
+    .color-pill.active:focus-visible {
+      outline: none !important;
+      box-shadow: none !important;
+    }
+    /* STRICTLY SQUARE Color Swatch Box */
+    .color-dot,
+    .color-swatch-square {
+      width: 11px !important;
+      height: 11px !important;
+      border-radius: 0px !important; /* STRICTLY SQUARE */
+      display: inline-block !important;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.2) !important;
+      flex-shrink: 0 !important;
+    }
+    .color-pill.active .color-dot,
+    .color-pill.active .color-swatch-square {
+      box-shadow: 0 0 0 1.5px #ffffff, 0 1px 3px rgba(0, 0, 0, 0.5) !important;
+    }
+    .color-qty {
+      border-radius: 0px !important;
+      font-size: 9px !important;
+      font-family: var(--font-mono) !important;
+      padding: 1px 4px !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: #94a3b8 !important;
+    }
+    .color-pill.active .color-qty {
+      background: rgba(255, 255, 255, 0.16) !important;
+      color: #ffffff !important;
+    }
+
+    /* Craftsmanship & Heritage Weave Box */
+    .card-craft-section {
+      margin: 5px 0 8px 0 !important;
+      padding: 6px 9px !important;
+      background: rgba(15, 23, 42, 0.45) !important;
+      border: 1px solid rgba(255, 255, 255, 0.05) !important;
+      border-radius: 4px !important;
+    }
+    .craft-header {
+      display: flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      color: #d97706 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.04em !important;
+      margin-bottom: 3px !important;
+    }
+    .card-desc-clamp {
+      font-size: 11px !important;
+      line-height: 1.45 !important;
+      color: #94a3b8 !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 2 !important; /* Exactly 2 lines */
+      -webkit-box-orient: vertical !important;
+      max-height: 32px !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      word-break: break-word !important;
+    }
+    .card-desc-clamp.expanded {
+      -webkit-line-clamp: unset !important;
+      max-height: none !important;
+      display: block !important;
+      overflow: visible !important;
+    }
+    .btn-toggle-desc {
+      background: none !important;
+      border: none !important;
+      color: #38bdf8 !important;
+      font-size: 10px !important;
+      font-weight: 500 !important;
+      padding: 2px 0 0 0 !important;
+      cursor: pointer !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 3px !important;
+      transition: color 0.15s ease !important;
+    }
+    .btn-toggle-desc:hover {
+      color: #7dd3fc !important;
+      text-decoration: underline !important;
+    }
+
+    /* Elegant Action Toolbar */
+    .card-footer-actions {
+      margin-top: auto !important;
+      padding-top: 10px !important;
+      border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 6px !important;
+    }
+    .action-primary {
+      width: 100% !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 6px !important;
+      padding: 7px 12px !important;
+      font-size: 11.5px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.01em !important;
+      border-radius: 5px !important;
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+      border: 1px solid rgba(59, 130, 246, 0.4) !important;
+      color: #ffffff !important;
+      cursor: pointer !important;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25) !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    .action-primary:hover {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+      border-color: rgba(96, 165, 250, 0.6) !important;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45) !important;
+      transform: translateY(-1px) !important;
+    }
+    .action-secondary-row {
+      display: flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    .action-secondary-row .btn-subtle {
+      flex: 1 1 0 !important;
+      min-width: 0 !important;
+      padding: 5px 4px !important;
+      font-size: 9.5px !important;
+      font-weight: 500 !important;
+      gap: 3px !important;
+      background: rgba(255, 255, 255, 0.035) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-radius: 4px !important;
+      color: #cbd5e1 !important;
+      cursor: pointer !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      justify-content: center !important;
+      transition: all 0.15s ease !important;
+    }
+    .action-secondary-row .btn-subtle:hover {
+      background: rgba(255, 255, 255, 0.08) !important;
+      border-color: rgba(255, 255, 255, 0.2) !important;
+      color: #ffffff !important;
+    }
+    .action-secondary-row .btn-subtle span {
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    .action-secondary-row .btn-subtle-danger,
+    .action-secondary-row .btn-delete-card {
+      flex: 0 0 28px !important;
+      width: 28px !important;
+      min-width: 28px !important;
+      height: 26px !important;
+      margin-left: 8px !important; /* Dedicated spacing separating delete */
+      margin-right: 0 !important;
+      padding: 0 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-radius: 4px !important;
+      background: rgba(239, 68, 68, 0.08) !important;
+      border: 1px solid rgba(239, 68, 68, 0.22) !important;
+      color: #f87171 !important;
+      cursor: pointer !important;
+      transition: all 0.15s ease !important;
+    }
+    .action-secondary-row .btn-delete-card:hover {
+      background: rgba(239, 68, 68, 0.2) !important;
+      border-color: rgba(239, 68, 68, 0.5) !important;
+      color: #ffffff !important;
+    }
+
+    /* =========================================================================
+       SENIOR DESIGNER DARK LUXURY AUTHENTICATION SYSTEM
+       ========================================================================= */
+
+    /* Hide Unwanted Clerk Elements & Footers */
+    .cl-footerAction,
+    .cl-footerActionLink,
+    .cl-footerActionText,
+    .cl-footer__action,
+    .cl-signUp-link,
+    [data-localization-key*="signUp"],
+    a[href*="sign-up"],
+    .cl-internal-1dauvpw,
+    .cl-attribution,
+    a[href*="clerk.com"],
+    .cl-cardBadge {
+      display: none !important;
+    }
+
+    /* Outer Clerk Card - Chamfered Frosted Glass with Luminescent White Outline */
+    .cl-card {
+      border: 1px solid rgba(255, 255, 255, 0.42) !important;
+      border-radius: 18px !important;
+      background: linear-gradient(180deg, rgba(16, 23, 38, 0.96) 0%, rgba(9, 13, 22, 0.98) 100%) !important;
+      box-shadow: 
+        0 0 0 1px rgba(255, 255, 255, 0.1),
+        0 25px 60px -10px rgba(0, 0, 0, 0.85),
+        0 0 40px -10px rgba(59, 130, 246, 0.2),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.5) !important;
+      backdrop-filter: blur(24px) !important;
+      padding: 32px 28px !important;
+    }
+
+    /* Card Header & Typography */
+    .cl-headerTitle {
+      color: #ffffff !important;
+      font-size: 21px !important;
+      font-weight: 800 !important;
+      letter-spacing: -0.025em !important;
+    }
+    .cl-headerSubtitle {
+      color: #94a3b8 !important;
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      margin-top: 4px !important;
+    }
+    .cl-formFieldLabel {
+      color: #e2e8f0 !important;
+      font-size: 12px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.02em !important;
+      margin-bottom: 6px !important;
+    }
+
+    /* Google Sign-In Button - Precision White Outline & Subtle Glass */
+    .cl-socialButtonsBlockButton,
+    .cl-socialButtonsBlockButton__google {
+      border: 1px solid rgba(255, 255, 255, 0.45) !important;
+      color: #ffffff !important;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%) !important;
+      border-radius: 10px !important;
+      padding: 12px 18px !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    .cl-socialButtonsBlockButton:hover,
+    .cl-socialButtonsBlockButton__google:hover {
+      border-color: #ffffff !important;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 100%) !important;
+      box-shadow: 0 0 16px rgba(255, 255, 255, 0.3), inset 0 1px 0 #ffffff !important;
+      transform: translateY(-1px) !important;
+    }
+    .cl-socialButtonsBlockButtonText,
+    .cl-socialButtonsBlockButton__google .cl-socialButtonsBlockButtonText {
+      color: #ffffff !important;
+      font-weight: 600 !important;
+      font-size: 13.5px !important;
+      letter-spacing: 0.01em !important;
+    }
+
+    /* Divider ("or") */
+    .cl-dividerLine {
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent) !important;
+      height: 1px !important;
+      border: none !important;
+    }
+    .cl-dividerText {
+      color: #94a3b8 !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.14em !important;
+      background: transparent !important;
+    }
+
+    /* Phone Number Input Box & Form Fields - High-Contrast Pure White Digits */
+    .cl-phoneInputBox,
+    .cl-formFieldInput,
+    .cl-input,
+    input[name="phoneNumber"],
+    input[type="tel"],
+    input[name="identifier"] {
+      color: #ffffff !important;
+      border: 1px solid rgba(255, 255, 255, 0.4) !important;
+      background-color: #080d1a !important;
+      outline: none !important;
+      border-radius: 10px !important;
+      font-size: 14px !important;
+      font-weight: 600 !important;
+      font-variant-numeric: tabular-nums !important;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+      transition: all 0.2s ease !important;
+    }
+    .cl-phoneInputBox:focus-within,
+    .cl-formFieldInput:focus,
+    .cl-input:focus,
+    input[type="tel"]:focus {
+      border-color: #ffffff !important;
+      box-shadow: 0 0 0 1px #ffffff, 0 0 16px rgba(255, 255, 255, 0.35) !important;
+    }
+    .cl-phoneInputCountryCallingCode,
+    .cl-phoneInputCountryCode,
+    .cl-phoneInputButton {
+      color: #ffffff !important;
+      font-weight: 600 !important;
+      border-right: 1px solid rgba(255, 255, 255, 0.3) !important;
+      background: rgba(255, 255, 255, 0.03) !important;
+      border-radius: 9px 0 0 9px !important;
+    }
+    .cl-phoneInputCountryCallingCode__text,
+    .cl-phoneInputCountryCode__text {
+      color: #ffffff !important;
+      font-weight: 600 !important;
+    }
+    input[type="tel"]::placeholder,
+    .cl-formFieldInput::placeholder {
+      color: rgba(255, 255, 255, 0.45) !important;
+    }
+
+    /* Primary Submit Action (Continue Button) */
+    .cl-formButtonPrimary {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+      border: 1px solid rgba(147, 197, 253, 0.45) !important;
+      border-radius: 10px !important;
+      padding: 12px 20px !important;
+      color: #ffffff !important;
+      font-weight: 700 !important;
+      font-size: 13px !important;
+      letter-spacing: 0.06em !important;
+      text-transform: uppercase !important;
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+      cursor: pointer !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    .cl-formButtonPrimary:hover {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+      box-shadow: 0 8px 28px rgba(37, 99, 235, 0.65), 0 0 16px rgba(59, 130, 246, 0.5) !important;
+      transform: translateY(-1.5px) !important;
+    }
+
+    /* All Metric & Badge Numbers with White Color and White Outline */
+    .tab-count {
+      color: #ffffff !important;
+      border: 1px solid rgba(255, 255, 255, 0.5) !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+    }
+    .stock-tag {
+      color: #ffffff !important;
+      border: 1px solid rgba(255, 255, 255, 0.5) !important;
+    }
+    .color-variant-total {
+      color: #ffffff !important;
+      border: 1px solid rgba(255, 255, 255, 0.35) !important;
+      padding: 1px 5px !important;
+      border-radius: 3px !important;
+    }
+
+    /* =========================================================================
+       LUXURY ENTERPRISE TOPBAR SYSTEM
+       ========================================================================= */
+    .app-header {
+      background: rgba(10, 15, 29, 0.9) !important;
+      backdrop-filter: blur(20px) saturate(180%) !important;
+      -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    .header-top {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 10px 24px !important;
+      gap: 16px !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    }
+
+    /* Brand Group */
+    .brand-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      flex-shrink: 0 !important;
+    }
+
+    .brand-logo-mark {
+      width: 32px !important;
+      height: 32px !important;
+      background: linear-gradient(135deg, #6366f1, #3b82f6) !important;
+      border: 1px solid rgba(255, 255, 255, 0.2) !important;
+      border-radius: 8px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      color: #ffffff !important;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35) !important;
+    }
+
+    .brand-title-group {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+    }
+
+    .brand-title {
+      font-size: 15px !important;
+      font-weight: 700 !important;
+      color: #ffffff !important;
+      letter-spacing: -0.02em !important;
+      font-family: var(--font-sans) !important;
+    }
+
+    .brand-badge {
+      font-size: 10px !important;
+      font-weight: 600 !important;
+      color: #94a3b8 !important;
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      padding: 2px 7px !important;
+      border-radius: 4px !important;
+      letter-spacing: 0.02em !important;
+      text-transform: uppercase !important;
+    }
+
+    /* Unified System Status Capsule */
+    .system-status-capsule {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      background: rgba(15, 23, 42, 0.65) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-radius: 9999px !important;
+      padding: 5px 16px !important;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .status-item {
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      font-size: 11.5px !important;
+      color: #94a3b8 !important;
+      font-family: var(--font-sans) !important;
+    }
+
+    .status-label {
+      color: #64748b !important;
+      font-weight: 500 !important;
+    }
+
+    .status-val {
+      color: #e2e8f0 !important;
+      font-weight: 600 !important;
+    }
+
+    .status-pipe {
+      width: 1px !important;
+      height: 12px !important;
+      background: rgba(255, 255, 255, 0.12) !important;
+    }
+
+    .status-dot-pulse,
+    .status-item .status-dot {
+      width: 7px !important;
+      height: 7px !important;
+      border-radius: 50% !important;
+      background: #10b981 !important;
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7) !important;
+      animation: pulse-green 2s infinite !important;
+      display: inline-block !important;
+      flex-shrink: 0 !important;
+    }
+
+    .status-dot-pulse.offline,
+    .status-item .status-dot.offline {
+      background: #f59e0b !important;
+      box-shadow: none !important;
+      animation: none !important;
+    }
+
+    .status-dot-pulse.error,
+    .status-item .status-dot.error {
+      background: #ef4444 !important;
+      box-shadow: none !important;
+      animation: none !important;
+    }
+
+    @keyframes pulse-green {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    /* Header Actions */
+    .header-actions {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+    }
+
+    /* Unified Location Picker */
+    .location-picker-btn {
+      display: flex !important;
+      align-items: center !important;
+      gap: 9px !important;
+      padding: 5px 12px !important;
+      background: rgba(30, 41, 59, 0.5) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      border-radius: 8px !important;
+      cursor: pointer !important;
+      transition: all 0.2s ease !important;
+    }
+
+    .location-picker-btn:hover {
+      background: rgba(30, 41, 59, 0.8) !important;
+      border-color: rgba(99, 102, 241, 0.4) !important;
+    }
+
+    .loc-icon-wrap {
+      color: #818cf8 !important;
+      display: flex !important;
+      align-items: center !important;
+    }
+
+    .loc-text-col {
+      display: flex !important;
+      flex-direction: column !important;
+      text-align: left !important;
+      line-height: 1.2 !important;
+    }
+
+    .loc-store-name {
+      font-size: 11.5px !important;
+      font-weight: 600 !important;
+      color: #f8fafc !important;
+    }
+
+    .loc-godown-badge {
+      font-size: 10px !important;
+      color: #94a3b8 !important;
+    }
+
+    .loc-godown-badge strong {
+      color: #34d399 !important;
+      font-weight: 600 !important;
+    }
+
+    .loc-switch-tag {
+      background: rgba(99, 102, 241, 0.12) !important;
+      border: 1px solid rgba(99, 102, 241, 0.25) !important;
+      color: #a5b4fc !important;
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      padding: 2px 6px !important;
+      border-radius: 4px !important;
+      cursor: pointer !important;
+      transition: all 0.15s ease !important;
+    }
+
+    .loc-switch-tag:hover {
+      background: rgba(99, 102, 241, 0.25) !important;
+      color: #ffffff !important;
+    }
+
+    /* Action Icon Buttons */
+    .header-icon-btn {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      padding: 6px 11px !important;
+      height: 32px !important;
+      font-size: 11.5px !important;
+      font-weight: 500 !important;
+      color: #cbd5e1 !important;
+      background: rgba(30, 41, 59, 0.4) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-radius: 7px !important;
+      cursor: pointer !important;
+      transition: all 0.15s ease !important;
+    }
+
+    .header-icon-btn:hover {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: #ffffff !important;
+      border-color: rgba(255, 255, 255, 0.18) !important;
+    }
+
+    .header-icon-btn.icon-only {
+      padding: 6px 8px !important;
+    }
+
+    /* User Profile Luxury */
+    .user-profile-luxury {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding-left: 6px !important;
+      border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+
+    .user-avatar-circle {
+      width: 28px !important;
+      height: 28px !important;
+      border-radius: 50% !important;
+      background: linear-gradient(135deg, #6366f1, #3b82f6) !important;
+      border: 1px solid rgba(255, 255, 255, 0.25) !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      color: #ffffff !important;
+      font-size: 11.5px !important;
+      font-weight: 700 !important;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25) !important;
+    }
+
+    .user-email-label {
+      font-size: 11.5px !important;
+      color: #94a3b8 !important;
+      font-weight: 500 !important;
+    }
+
+    .btn-signout-luxury {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      padding: 3px 8px !important;
+      background: transparent !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      border-radius: 5px !important;
+      color: #94a3b8 !important;
+      font-size: 10.5px !important;
+      cursor: pointer !important;
+      transition: all 0.15s ease !important;
+    }
+
+    .btn-signout-luxury:hover {
+      color: #f87171 !important;
+      border-color: rgba(239, 68, 68, 0.3) !important;
+      background: rgba(239, 68, 68, 0.08) !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- =========================================================================
+       STEP 1 & STEP 2: STORE SELECTION & PURE SUPABASE AUTHENTICATION
+       ========================================================================= -->
+  <div id="authFirstScreen" style="min-height:100vh; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; background: radial-gradient(circle at 50% 12%, rgba(59, 130, 246, 0.16) 0%, rgba(30, 58, 138, 0.05) 40%, transparent 70%), radial-gradient(circle at 50% 88%, rgba(99, 102, 241, 0.08) 0%, transparent 60%), #060913; padding:32px 16px; box-sizing:border-box; position:relative; overflow:hidden;">
+    
+    <!-- Ambient Depth Lighting Glow -->
+    <div style="position:absolute; width:520px; height:520px; border-radius:50%; background:radial-gradient(circle, rgba(59, 130, 246, 0.14) 0%, rgba(99, 102, 241, 0.07) 40%, transparent 70%); filter:blur(50px); pointer-events:none; z-index:0;"></div>
+
+    <div style="text-align:center; margin-bottom:24px; position:relative; z-index:1;">
+      <div style="width:58px; height:58px; margin:0 auto 14px; background:linear-gradient(135deg, rgba(37,99,235,0.3) 0%, rgba(30,58,138,0.5) 100%); border:1px solid rgba(147, 197, 253, 0.35); border-radius:16px; display:flex; align-items:center; justify-content:center; color:#93c5fd; box-shadow:0 12px 30px rgba(37,99,235,0.3), inset 0 1px 0 rgba(255,255,255,0.3); backdrop-filter:blur(8px);">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h10M7 12h10M7 17h6"/></svg>
+      </div>
+      <h1 style="margin:0 0 6px 0; font-size:24px; font-weight:800; color:#ffffff; letter-spacing:-0.03em;">Sai Traders Operations</h1>
+      <p style="margin:0 0 8px 0; font-size:13.5px; font-weight:500; color:#94a3b8;">Enterprise Retail & TallyPrime Inventory Cloud</p>
+      <div id="stepIndicatorBadge" style="display:inline-flex; align-items:center; gap:7px; padding:4px 12px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:100px; font-size:11.5px; color:#cbd5e1; font-weight:500; backdrop-filter:blur(6px);">
+        <span class="status-dot" style="background:#3b82f6; width:6.5px; height:6.5px; border-radius:50%; display:inline-block;"></span>
+        <span id="stepIndicatorText">Device Activation: Pair with Admin Console</span>
+      </div>
+    </div>
+
+    <!-- =========================================================================
+         ZEE5 ACTIVATION SCREEN: 6-CHARACTER DEVICE PAIRING & GODOWN LOCK
+         ========================================================================= -->
+    <div id="stepZee5PairCard" class="zee5-card">
+      <div class="zee5-icon-wrap">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="20" height="14" x="2" y="3" rx="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+      </div>
+
+      <h2 style="margin:0 0 6px 0; font-size:22px; font-weight:800; color:#ffffff; letter-spacing:-0.025em;">Connect This Store PC</h2>
+      <p style="margin:0 0 16px 0; font-size:13px; color:#94a3b8; font-weight:500;">
+        Enter this 6-character code on your Admin Console to pair and lock this terminal.
+      </p>
+
+      <!-- 6-Character Code Display -->
+      <div id="zee5CodeBox" class="zee5-code-box">
+        <div class="zee5-code-char pulse-char">-</div>
+        <div class="zee5-code-char pulse-char">-</div>
+        <div class="zee5-code-char pulse-char">-</div>
+        <div class="zee5-code-separator">-</div>
+        <div class="zee5-code-char pulse-char">-</div>
+        <div class="zee5-code-char pulse-char">-</div>
+        <div class="zee5-code-char pulse-char">-</div>
+      </div>
+
+      <!-- Status Indicator Pill -->
+      <div id="zee5StatusBadge" class="zee5-status-pill">
+        <span class="pulse-dot"></span>
+        <span>Waiting for admin approval...</span>
+      </div>
+
+      <div id="zee5TimerText" style="font-family:var(--font-mono); font-size:11.5px; color:#64748b; margin-bottom:18px;">
+        Code expires in 15:00
+      </div>
+
+      <!-- Pairing Instructions -->
+      <div class="zee5-steps-card">
+        <div class="zee5-step-item">
+          <span class="zee5-step-num">1</span>
+          <span>Open <strong>Sai Traders Admin Console</strong> on an authorized laptop / PC.</span>
+        </div>
+        <div class="zee5-step-item">
+          <span class="zee5-step-num">2</span>
+          <span>Click <strong>"Pair PC"</strong> in the top header and enter this 6-character code.</span>
+        </div>
+        <div class="zee5-step-item">
+          <span class="zee5-step-num">3</span>
+          <span>Select the <strong>Godown storage</strong> to lock to this terminal.</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button type="button" class="btn btn-outline" onclick="generateZee5PairCode()" style="width:100%; height:38px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:12.5px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <span>↻ Refresh / Generate New Code</span>
+        </button>
+
+        <button type="button" onclick="toggleDirectAdminLogin(true)" style="background:transparent; border:none; color:#60a5fa; font-size:12.5px; cursor:pointer; font-weight:600; padding:8px 0; text-decoration:underline;">
+          Admin Direct Sign In (Email &amp; Password) →
+        </button>
+      </div>
+    </div>
+
+    <!-- Hidden Legacy Store Card Container -->
+    <div id="step1StoreCard" style="display:none;"></div>
+
+    <!-- =========================================================================
+         STEP 2 CONTAINER: PURE SUPABASE AUTHENTICATION (FOR ADMINS)
+         ========================================================================= -->
+    <div id="step2AuthCard" class="cl-card" style="width:100%; max-width:440px; box-sizing:border-box; position:relative; z-index:1; display:none;">
+      <div style="margin-bottom:14px; text-align:left;">
+        <a href="javascript:void(0)" onclick="toggleDirectAdminLogin(false)" style="font-size:12px; color:#60a5fa; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
+          ← Back to Device Activation Code
+        </a>
+      </div>
+
+      <div style="margin-bottom:18px; text-align:left;">
+        <h2 style="margin:0 0 4px 0; font-size:20px; font-weight:800; color:#ffffff; letter-spacing:-0.025em;">Admin Sign In</h2>
+        <p style="margin:0; font-size:12.5px; color:#94a3b8; font-weight:500;">Enter your Supabase admin credentials to unlock console.</p>
+      </div>
+
+      <!-- Password Form (Clean Inputs — NO prefilled passwords) -->
+      <form id="formPasswordAuth" onsubmit="handlePasswordSubmit(event)">
+        <div style="margin-bottom:14px; text-align:left;">
+          <label class="cl-formFieldLabel" for="authEmailInput">Email address</label>
+          <input type="email" id="authEmailInput" class="cl-formFieldInput" placeholder="Enter admin email address" required autocomplete="username" style="width:100%; box-sizing:border-box; padding:11px 14px;">
+        </div>
+        <div style="margin-bottom:18px; text-align:left;">
+          <label class="cl-formFieldLabel" for="authPasswordInput">Password</label>
+          <input type="password" id="authPasswordInput" class="cl-formFieldInput" placeholder="Enter password" required autocomplete="current-password" style="width:100%; box-sizing:border-box; padding:11px 14px;">
+        </div>
+        <div id="authErrorMessage" style="display:none; color:#f87171; font-size:12px; margin-bottom:14px; padding:10px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); border-radius:8px; line-height:1.4;"></div>
+        <button type="submit" id="btnSubmitPassword" class="cl-formButtonPrimary" style="width:100%; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:8px;">
+          <span>Sign In & Unlock Console</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Authenticated Application (Hidden until authentication succeeds) -->
+  <div id="authenticatedApp" style="display:none;">
+
+  <!-- Top Application Header -->
+  <header class="app-header">
+    <div class="header-top">
+      <!-- Luxury Brand Section -->
+      <div class="brand-section">
+        <div class="brand-logo-mark" aria-hidden="true" title="Sai Traders Retail Console">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="brand-title-group">
+          <span class="brand-title">Sai Traders</span>
+        </div>
+      </div>
+
+      <!-- Unified Glassmorphism System Status Capsule -->
+      <div class="system-status-capsule" id="systemStatusCapsule">
+        <div class="status-item" id="tallyStatusIndicator" title="Tally ERP Bridge Connection">
+          <span class="status-dot-pulse" id="tallyDot"></span>
+          <span class="status-label">Tally:</span>
+          <span class="status-val" id="tallyStatusText">Connected</span>
+        </div>
+        <div class="status-pipe"></div>
+        <div class="status-item" id="waTokenIndicator" title="WhatsApp Customer AI Agent">
+          <span class="status-dot-pulse" id="waDot"></span>
+          <span class="status-label">WhatsApp:</span>
+          <span class="status-val" id="waStatusText">Active</span>
+        </div>
+        <div class="status-pipe"></div>
+        <div class="status-item" id="morningSyncIndicator" title="Live Catalog & Godown Stock Sync">
+          <span class="status-label">Sync:</span>
+          <span class="status-val" id="morningSyncText">Live</span>
+        </div>
+      </div>
+
+      <!-- Right Side: Location Switcher & Quick Controls -->
+      <div class="header-actions">
+        <!-- Integrated Store & Godown Location Selector -->
+        <div class="location-picker-btn" id="activeStoreHeaderContainer" onclick="handleSwitchStore()" title="Switch Active Store & Godown Location">
+          <div class="loc-icon-wrap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
+          <div class="loc-text-col">
+            <span class="loc-store-name" id="activeStoreHeaderBadge">Sai Traders</span>
+            <span class="loc-godown-badge"><span class="godown-lbl">Godown:</span> <strong id="activeGodownBadge">Online_saree</strong></span>
+          </div>
+          <button type="button" class="loc-switch-tag" onclick="event.stopPropagation(); handleSwitchStore();">Switch</button>
+        </div>
+
+        <button class="btn btn-outline" id="btnGodownSetup" style="display:none;" title="Legacy godown trigger"></button>
+
+        <!-- Pair PC Terminal (6-Character Code) -->
+        <button class="header-icon-btn" id="btnHeaderPairDevice" onclick="openPairDeviceModal()" title="Pair New Store Terminal (6-Character Code)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span>Pair PC</span>
+        </button>
+
+        <!-- Connected Terminals Manager -->
+        <button class="header-icon-btn" id="btnHeaderConnectedDevices" onclick="openConnectedDevicesModal()" title="Manage Paired Terminals & Godowns">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span>Devices</span>
+        </button>
+
+        <!-- Actions -->
+        <button class="header-icon-btn" id="btnMorningSync" title="Sync Tally Closing Balances with Catalog">
+          <svg class="sync-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+          <span>Sync</span>
+        </button>
+
+        <button class="header-icon-btn" onclick="const cur = localStorage.getItem('sai_api_base_url') || window.location.origin; const u = prompt('Configure Backend API URL (leave empty for same-origin server):', cur); if (u !== null) window.setSaiApiBaseUrl(u);" title="Configure Backend API Server URL">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+
+        <button class="header-icon-btn icon-only" id="btnRefresh" title="Refresh Live Data">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
+
+        <!-- User Profile Pill -->
+        <div id="supabaseAuthControls">
+          <div id="supabaseUserBadge" style="display:none;">
+            <div class="user-profile-luxury">
+              <div id="userAvatar" class="user-avatar-circle">A</div>
+              <span id="userEmailText" class="user-email-label">admin</span>
+              <button id="btnSupabaseSignOut" onclick="handleSupabaseSignOut()" class="btn-signout-luxury" title="Sign out of console">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <span>Exit</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" aria-label="Application Sections">
+      <button class="tab-btn active" data-tab="tabInventory">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect width="18" height="18" x="3" y="3" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        Inventory
+        <span class="tab-count" id="badgeInventoryCount">0</span>
+      </button>
+
+      <button class="tab-btn" data-tab="tabAnalytics">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Sales Analytics
+      </button>
+
+      <button class="tab-btn" data-tab="tabStockLog">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+        Reconciliation & Discrepancies
+        <span class="tab-count" id="badgeDiscrepancyCount" style="display:none; background:var(--status-rose-bg); color:var(--status-rose); border:1px solid var(--status-rose-border);">0</span>
+      </button>
+
+      <button class="tab-btn" data-tab="tabMatcher">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="m11 8 3 3-3 3"/></svg>
+        Visual Search
+      </button>
+
+      <button class="tab-btn" data-tab="tabVideos">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        Catalog Media
+        <span class="tab-count" id="badgeVideoCount">0</span>
+      </button>
+    </nav>
+  </header>
+
+  <!-- Main Application Container -->
+  <main class="main-container">
+
+    <!-- =========================================================================
+         TAB 1: INVENTORY CATALOG
+         ========================================================================= -->
+    <section class="tab-panel active" id="tabInventory">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" class="search-input" id="inventorySearch" placeholder="Search by SKU, product code, or saree name...">
+        </div>
+
+        <div class="filter-group">
+          <button class="filter-pill active" data-filter="in_stock" id="pillInStock" onclick="window.setInventoryFilter('in_stock', this)">In Stock (Online_saree) (<span id="countInStock">0</span>)</button>
+          <button class="filter-pill" data-filter="out_of_stock" id="pillOutOfStock" onclick="window.setInventoryFilter('out_of_stock', this)">Out of Stock (<span id="countOutOfStock">0</span>)</button>
+          <button class="filter-pill" data-filter="deleted" id="pillDeleted" style="color: #f87171;" onclick="window.setInventoryFilter('deleted', this)">Deleted (<span id="countDeleted">0</span>)</button>
+          <button class="filter-pill" data-filter="all" id="pillAll" onclick="window.setInventoryFilter('all', this)">All Items (<span id="countAllCatalog">0</span>)</button>
+          <button class="filter-pill" data-filter="has_video" onclick="window.setInventoryFilter('has_video', this)">Video Attached</button>
+          <button class="filter-pill" data-filter="missing_video" onclick="window.setInventoryFilter('missing_video', this)">Missing Video</button>
+        </div>
+
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-outline" id="btnToggleGroupMode" title="Select multiple sarees to combine them into one color family">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Group Sarees
+          </button>
+          <button class="btn btn-outline" id="btnSyncTallyAll" title="Query Sarees Godown balances for all catalog products">
+            <svg class="sync-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+            Sync All Stock
+          </button>
+          <button class="btn btn-primary" id="btnOpenAddSareeModal" title="Add a new saree to catalog with photo and vector embedding">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Saree
+          </button>
+        </div>
+      </div>
+
+      <!-- Floating Group Action Bar when Group Mode is active -->
+      <div id="groupActionBar" class="group-action-bar" style="display:none;">
+        <div class="group-bar-left">
+          <span class="group-bar-badge" id="selectedGroupCount">0 selected</span>
+          <span class="group-bar-hint">Select 2 or more sarees from the catalog to combine them into one color family.</span>
+        </div>
+        <div class="group-bar-actions">
+          <button class="btn btn-sm btn-outline" id="btnCancelGroupMode">Cancel</button>
+          <button class="btn btn-sm btn-primary" id="btnConfirmGroupSelected" disabled>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+            Combine into Family
+          </button>
+        </div>
+      </div>
+
+      <div class="inventory-grid" id="inventoryGrid">
+        <div style="padding: 40px; text-align: center; color: var(--text-muted);">Loading catalog inventory...</div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         TAB 2: RECONCILIATION & DISCREPANCIES (PHASE 2)
+         ========================================================================= -->
+    <section class="tab-panel" id="tabStockLog">
+      <!-- Sync Control & Dynamic Schedule Bar -->
+      <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px 18px; margin-bottom:16px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:20px;">
+          <div>
+            <div style="font-size:11px; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em;">Daily Ingestion Schedule</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:5px;">
+              <input type="time" id="syncScheduleInput" class="form-input" style="width:115px; padding:4px 8px; font-size:12px;" value="09:30">
+              <button class="btn btn-sm btn-outline" id="btnSaveSyncSchedule">Save Time</button>
+            </div>
+          </div>
+          <div style="border-left:1px solid var(--border); padding-left:20px;">
+            <div style="font-size:11px; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em;">Shop Terminal Telemetry</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:7px; font-size:12px;">
+              <span class="status-dot" id="agentLiveDot" style="background:var(--status-amber);"></span>
+              <span id="agentLiveStatusText" style="color:var(--text-secondary); font-family:var(--font-mono);">Connecting...</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="btn btn-outline" id="btnOpenDowntimeModal" style="border-color:var(--status-amber-border); color:var(--status-amber);" title="Enter shelf stock manually when Shop PC is powered off">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            Manual Inventory Adjustment
+          </button>
+          <button class="btn btn-primary" id="btnRunSyncNow">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+            Trigger Ingestion Run
+          </button>
+        </div>
+      </div>
+
+      <!-- Downtime Warning Banner (Shown when PC offline) -->
+      <div id="downtimeAlertBanner" style="display:none; background:var(--status-amber-bg); border:1px solid var(--status-amber-border); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--status-amber)" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div>
+              <strong style="color:var(--status-amber); font-size:12px;">Shop Terminal Disconnected</strong>
+              <p style="font-size:11px; color:var(--text-secondary); margin-top:2px;">
+                Tally ERP on 127.0.0.1:9000 is unreachable. Cloud inventory remains active for customer orders. Use Manual Inventory Adjustment if stock quantities need immediate adjustment.
+              </p>
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline" style="border-color:var(--status-amber-border); color:var(--status-amber);" onclick="document.getElementById('btnOpenDowntimeModal').click()">
+            Record Shelf Count
+          </button>
+        </div>
+      </div>
+
+      <!-- Discrepancies Table Section -->
+      <div class="panel-card" style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div>
+            <h3 style="font-size:13px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+              <span>Discrepancy Queue</span>
+              <span class="tab-count" id="openDiscrepanciesCount" style="background:var(--status-rose-bg); color:var(--status-rose); border:1px solid var(--status-rose-border);">0</span>
+            </h3>
+            <p style="font-size:11px; color:var(--text-muted); margin-top:2px;">Unexplained variances between Tally Online Godown and cloud ledger awaiting verification.</p>
+          </div>
+          <div class="filter-group">
+            <button class="filter-pill active" id="btnFilterDiscOpen" onclick="window.filterDiscrepancies('open')">Open Only</button>
+            <button class="filter-pill" id="btnFilterDiscAll" onclick="window.filterDiscrepancies('all')">All History</button>
+          </div>
+        </div>
+
+        <div class="data-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Product Code</th>
+                <th>Product Name</th>
+                <th>Cloud Expected</th>
+                <th>Tally Actual</th>
+                <th>Variance</th>
+                <th>Audit Notes</th>
+                <th>Detected At</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="discrepanciesTableBody">
+              <tr><td colspan="8" style="padding:24px; text-align:center; color:var(--text-muted);">No open discrepancies. Cloud ledger matches Tally ERP.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- New Stock Inwards & Draft Sarees Grid -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+        <!-- Left: New Stock Inward Detected -->
+        <div class="panel-card">
+          <h3 style="font-size:12px; font-weight:600; color:var(--status-emerald); margin-bottom:2px;">
+            Recent Inward Receipts
+          </h3>
+          <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">Stock balance increments detected from Tally Online Godown and accepted into cloud inventory.</p>
+          <div id="newStockInwardList" style="max-height:200px; overflow-y:auto; font-size:12px;">
+            <div style="padding:16px; text-align:center; color:var(--text-muted);">No inward receipts recorded recently.</div>
+          </div>
+        </div>
+
+        <!-- Right: Unknown Tally SKUs Auto-Created as Drafts -->
+        <div class="panel-card">
+          <h3 style="font-size:12px; font-weight:600; color:#38bdf8; margin-bottom:2px;">
+            Uncataloged Tally Items
+          </h3>
+          <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">New items discovered in Tally Godown awaiting catalog categorization and photography.</p>
+          <div id="newDraftProductsList" style="max-height:200px; overflow-y:auto; font-size:12px;">
+            <div style="padding:16px; text-align:center; color:var(--text-muted);">No uncataloged items found in Tally.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Sync Runs Log -->
+      <div class="panel-card">
+        <h3 style="font-size:12px; font-weight:600; color:var(--text-primary); margin-bottom:12px;">
+          Synchronization Audit Log
+        </h3>
+        <div class="data-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Initiated By</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Finished</th>
+                <th>Step Audit Summary</th>
+              </tr>
+            </thead>
+            <tbody id="syncRunsTableBody">
+              <tr><td colspan="6" style="padding:20px; text-align:center; color:var(--text-muted);">Loading audit history...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         TAB 3: VISUAL LOOKUP
+         ========================================================================= -->
+    <section class="tab-panel" id="tabMatcher">
+      <div class="matcher-grid">
+        <div class="panel-card">
+          <div class="panel-title">Visual Query Input</div>
+          <div class="panel-subtitle">Upload customer reference image or screenshot to identify the matching catalog saree from keyframes.</div>
+
+          <div class="dropzone" id="screenshotDropzone">
+            <input type="file" id="screenshotFileInput" accept="image/*" style="display:none;">
+            <div class="dropzone-prompt" id="dropPrompt">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+              <p style="font-weight: 500; color: var(--text-primary); margin:0;">Click or drag reference image here</p>
+              <span style="font-size:11px; color:var(--text-muted);">Or paste from clipboard (Ctrl+V)</span>
+            </div>
+            <div class="dropzone-preview" id="dropPreview">
+              <img id="screenshotPreviewImg" src="" alt="Reference image preview">
+            </div>
+          </div>
+
+          <div style="margin-top: 14px;">
+            <div class="form-group">
+              <label>Customer Inquiry Context (Optional)</label>
+              <input type="text" id="customerHintInput" class="form-input" placeholder="e.g. Inquiring about kanjivaram border from reel">
+            </div>
+
+            <div style="margin-top: 14px; display:flex; gap:8px;">
+              <button class="btn btn-primary" id="btnRunIdentification" style="flex:1;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                Identify Product
+              </button>
+              <button class="btn btn-outline" id="btnClearScreenshot" style="display:none;">Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-title">Match Result & Live Stock</div>
+          <div class="panel-subtitle">Multimodal embedding match against catalog keyframes and craft records.</div>
+
+          <div class="match-empty-state" id="matchEmptyState">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+            <span>Upload or paste an image on the left to begin identification.</span>
+          </div>
+
+          <div class="match-empty-state" id="matchLoadingState" style="display:none;">
+            <div class="status-indicator">
+              <span class="status-dot"></span>
+              <span>Running Multimodal Vector Analysis...</span>
+            </div>
+          </div>
+
+          <div class="match-verdict-card" id="matchVerdictCard">
+            <div class="verdict-header">
+              <div>
+                <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display:block;">Matched Product</span>
+                <div class="verdict-title" id="verdictSareeName">—</div>
+              </div>
+              <div class="confidence-meter" id="verdictConfidence">
+                <span class="status-dot"></span>
+                <span>98% Match</span>
+              </div>
+            </div>
+
+            <div class="comparison-grid">
+              <div class="comparison-col">
+                <div class="comparison-label">Reference Image</div>
+                <div class="comparison-media">
+                  <img id="compCustomerImg" src="" alt="Customer Reference">
+                </div>
+              </div>
+              <div class="comparison-col">
+                <div class="comparison-label">Catalog Keyframe</div>
+                <div class="comparison-media">
+                  <img id="compKeyframeImg" src="" alt="Catalog Keyframe">
+                </div>
+              </div>
+            </div>
+
+            <table class="match-details-table">
+              <tr>
+                <td>Product Code</td>
+                <td><strong id="verdictCode" style="font-family:var(--font-mono); color:#38bdf8;">—</strong></td>
+              </tr>
+              <tr>
+                <td>Match Reasoning</td>
+                <td id="verdictReasoning" style="color:var(--text-secondary);">—</td>
+              </tr>
+              <tr>
+                <td>Online Godown Stock</td>
+                <td id="verdictStock">—</td>
+              </tr>
+              <tr>
+                <td>Pricing</td>
+                <td id="verdictPricing">—</td>
+              </tr>
+              <tr>
+                <td>Description</td>
+                <td id="verdictDescription" style="color:var(--text-muted); font-size:11px;">—</td>
+              </tr>
+            </table>
+
+            <div class="whatsapp-box">
+              <div class="whatsapp-box-header">
+                <label style="font-size:11px; font-weight:600; color:var(--text-secondary);">Formatted WhatsApp Response</label>
+                <button class="btn btn-sm btn-outline" id="btnCopyWhatsApp">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  Copy Message
+                </button>
+              </div>
+              <textarea id="whatsappReplyText" readonly></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         TAB 4: MEDIA CATALOG
+         ========================================================================= -->
+    <section class="tab-panel" id="tabVideos">
+      <div class="toolbar">
+        <div>
+          <h2 style="font-size:13px; font-weight:600; color:var(--text-primary);">Video & Keyframe Registry</h2>
+          <p style="font-size:11px; color:var(--text-muted);">Product videos and sampled keyframes indexed for visual search.</p>
+        </div>
+        <button class="btn btn-primary" id="btnOpenVideoModal">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          Attach Media
+        </button>
+      </div>
+
+      <div class="inventory-grid" id="videoGrid">
+        <div style="padding: 40px; text-align: center; color: var(--text-muted);">Loading media registry...</div>
+      </div>
+    </section>
+
+
+    <!-- =========================================================================
+         TAB 6: SALES ANALYTICS
+         ========================================================================= -->
+    <section class="tab-panel" id="tabAnalytics">
+      <div class="analytics-header-bar">
+        <div>
+          <h2 style="font-size:18px; font-weight:700; color:var(--text-primary); margin:0;">Sales & Revenue Intelligence</h2>
+          <p style="font-size:12px; color:var(--text-muted); margin:4px 0 0 0;">Real-time orders, revenue metrics, and inventory sales performance</p>
+        </div>
+        <div class="filter-group" id="analyticsPeriodFilter">
+          <button class="filter-pill" data-period="today">Today</button>
+          <button class="filter-pill active" data-period="7d">Last 7 Days</button>
+          <button class="filter-pill" data-period="30d">Last 30 Days</button>
+          <button class="filter-pill" data-period="all">All Time</button>
+          <button class="btn btn-sm btn-outline" id="btnRefreshAnalytics" title="Reload Analytics">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+          <button class="btn btn-sm btn-primary" id="btnSyncGoogleSheets" title="Sync Sales to Google Spreadsheet" style="display:flex; align-items:center; gap:5px; background:linear-gradient(135deg, #059669, #10b981);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            Sync to Google Sheet
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Metrics Cards Grid -->
+      <div class="analytics-kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background: rgba(16, 185, 129, 0.12); color: var(--status-emerald);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="kpi-content">
+            <div class="kpi-label">Total Revenue</div>
+            <div class="kpi-val" id="kpiRevenue">₹0</div>
+            <div class="kpi-meta" id="kpiRevenueMeta">From completed sales</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background: rgba(56, 189, 248, 0.12); color: #38bdf8;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
+          </div>
+          <div class="kpi-content">
+            <div class="kpi-label">Completed Orders</div>
+            <div class="kpi-val" id="kpiOrders">0</div>
+            <div class="kpi-meta" id="kpiOrdersMeta">Orders fulfilled/confirmed</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background: rgba(168, 85, 247, 0.12); color: #c084fc;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 6v2m0 8v2"/></svg>
+          </div>
+          <div class="kpi-content">
+            <div class="kpi-label">Average Order Value</div>
+            <div class="kpi-val" id="kpiAOV">₹0</div>
+            <div class="kpi-meta">Per completed transaction</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background: rgba(245, 158, 11, 0.12); color: var(--status-amber);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          </div>
+          <div class="kpi-content">
+            <div class="kpi-label">Saree Units Sold</div>
+            <div class="kpi-val" id="kpiUnits">0</div>
+            <div class="kpi-meta" id="kpiUnitsMeta">Dispatched from locked godown</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secondary Row: Top Sellers & Channel Breakdown -->
+      <div class="analytics-sub-grid">
+        <div class="analytics-sub-card">
+          <div class="card-title-row">
+            <span style="font-weight:600; font-size:13px; color:var(--text-primary);">Top-Selling Sarees</span>
+            <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);" id="topSareesPeriodText">In Period</span>
+          </div>
+          <div id="topSareesList" style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
+            <div style="color:var(--text-muted); font-size:12px; text-align:center; padding:16px;">Loading top items...</div>
+          </div>
+        </div>
+
+        <div class="analytics-sub-card">
+          <div class="card-title-row">
+            <span style="font-weight:600; font-size:13px; color:var(--text-primary);">Order Channels & Statuses</span>
+            <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">Distribution</span>
+          </div>
+          <div id="channelStatusDistribution" style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
+            <div style="color:var(--text-muted); font-size:12px; text-align:center; padding:16px;">Loading distribution...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Orders Transactions Ledger Table -->
+      <div class="analytics-table-container">
+        <div style="padding:14px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <span style="font-weight:600; font-size:13px; color:var(--text-primary);">Orders & Sales Ledger</span>
+            <span style="margin-left:8px; font-size:11px; padding:2px 8px; border-radius:12px; background:var(--bg-canvas); color:var(--text-secondary); border:1px solid var(--border);" id="ordersRecordCount">0 orders</span>
+          </div>
+          <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">Live Cloud Synced</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="analytics-table">
+            <thead>
+              <tr>
+                <th>Order #</th>
+                <th>Customer</th>
+                <th>Date</th>
+                <th>Saree Items</th>
+                <th>Units</th>
+                <th>Total (₹)</th>
+                <th>Payment</th>
+                <th>Channel</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="analyticsOrdersTbody">
+              <tr>
+                <td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);">Loading sales orders...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- =========================================================================
+       MODAL: ATTACH MEDIA & DESCRIPTION
+       ========================================================================= -->
+  <div class="modal-overlay" id="videoModal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="videoModalTitle">Attach Catalog Media</h3>
+        <button class="close-btn" id="closeVideoModalBtn" aria-label="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Target Product</label>
+          <select id="vTargetSareeSelect" class="form-select"></select>
+        </div>
+
+        <div class="form-group">
+          <label>Video File or Resource URL</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="vSourceUrlInput" class="form-input" placeholder="Paste URL or select file...">
+            <button class="btn btn-outline" id="btnChooseVideoFile">Browse</button>
+            <input type="file" id="videoFileInput" accept="video/*" style="display:none;">
+          </div>
+        </div>
+
+        <div id="videoPlayerBox" style="display:none; text-align:center; background:#000; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border);">
+          <video id="modalVideoPlayer" controls playsinline style="max-width:100%; max-height:220px;"></video>
+          <div style="margin-top:8px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-primary" id="btnCaptureCurrentFrame">Capture Keyframe</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnAutoSampleFrames">Auto-Sample 3 Frames</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnAddFrameFileBtn">Upload Frame</button>
+            <input type="file" id="frameFileInput" accept="image/*" multiple style="display:none;">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Sampled Keyframes for Visual Search</label>
+          <div id="frameFilmstrip" style="display:flex; gap:8px; overflow-x:auto; padding:8px; background:var(--bg-canvas); border:1px solid var(--border); border-radius:var(--radius-sm); min-height:74px; align-items:center;">
+            <span style="font-size:11px; color:var(--text-muted);">No keyframes captured yet. Play video above and click "Capture Keyframe".</span>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+          <div class="form-group">
+            <label>Fabric</label>
+            <input type="text" id="vFabricInput" class="form-input" placeholder="e.g. Pure Silk">
+          </div>
+          <div class="form-group">
+            <label>Weave Style</label>
+            <input type="text" id="vWeaveInput" class="form-input" placeholder="e.g. Paithani">
+          </div>
+          <div class="form-group">
+            <label>Zari Type</label>
+            <input type="text" id="vZariInput" class="form-input" placeholder="e.g. Gold Tested">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Craftsmanship & Fabric Description</label>
+          <textarea id="vDescriptionInput" class="form-textarea" rows="3" placeholder="Describe weave, border motifs, zari type, and color details..."></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btnCancelVideoModal">Cancel</button>
+        <button class="btn btn-primary" id="btnSaveVideo">Save Media Record</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: PHOTO VIEWER & MANAGER
+       ========================================================================= -->
+  <div class="modal-overlay" id="photoModal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="photoModalTitle">Product Photography</h3>
+        <button class="close-btn" id="closePhotoModalBtn" aria-label="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="photoModalSku">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <label style="font-size:11px; font-weight:600; color:var(--text-secondary); margin:0;">Assigned Images</label>
+          <span id="photoModalCount" style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">0 Photos</span>
+        </div>
+        <div id="photoModalGrid" style="display:flex; gap:10px; flex-wrap:wrap; min-height:80px; padding:10px; background:var(--bg-canvas); border:1px solid var(--border); border-radius:var(--radius-sm); max-height:220px; overflow-y:auto;"></div>
+
+        <div class="form-group" style="margin-top:12px;">
+          <label style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span>Add More Photos (Multi-Select or Paste URLs)</span>
+            <span id="photoUploadStatus" style="font-size:11px; color:var(--status-emerald); font-family:var(--font-mono); font-weight:600; display:none;"></span>
+          </label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="photoUrlInput" class="form-input" placeholder="Paste image URL(s) (comma-separated)">
+            <button type="button" class="btn btn-outline" id="btnBrowsePhotoFile" style="display:inline-flex; align-items:center; gap:5px; white-space:nowrap;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload Photos
+            </button>
+            <input type="file" id="photoFileInput" accept="image/*" multiple style="display:none;">
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+            Tip: You can select multiple photo files at once in the file browser. The first image serves as the product cover card photo.
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btnClosePhotoModal">Close</button>
+        <button class="btn btn-primary" id="btnAssignPhotoUrl">Assign Image</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: TALLY ERP AUTHORIZATION & GODOWN SETUP WIZARD
+       ========================================================================= -->
+  <div class="modal-overlay" id="modalGodownSetup" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 530px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:34px; height:34px; border-radius:var(--radius-sm); background:rgba(56, 189, 248, 0.12); color:#38bdf8; display:flex; align-items:center; justify-content:center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </div>
+          <div>
+            <h3 style="margin:0; font-size:15px; font-weight:700;">Switch Active Godown & Location</h3>
+            <div style="font-size:11px; color:var(--text-muted);">Manage Tally ERP Godowns & Multi-PC Store Sync</div>
+          </div>
+        </div>
+        <button class="close-btn" id="btnCloseGodownSetup" aria-label="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Multi-PC Device & ERP Status Card -->
+        <div style="background:var(--bg-canvas); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span id="setupDeviceIcon" style="font-size:13px;">💻</span>
+              <span id="setupDeviceTitle" style="font-size:12px; font-weight:700; color:var(--text-primary);">Store Terminal PC</span>
+              <span id="setupDeviceModeBadge" style="font-size:10px; padding:1px 6px; border-radius:10px; background:rgba(59, 130, 246, 0.15); color:#60a5fa; font-weight:600;">Cloud Connected</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span id="setupTallyStatusTag" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:12px; background:rgba(16, 185, 129, 0.15); color:#10b981;">Detecting ERP</span>
+              <button type="button" id="btnTestConnectionModal" style="background:rgba(59, 130, 246, 0.12); border:1px solid rgba(59, 130, 246, 0.3); color:#60a5fa; cursor:pointer; font-size:10.5px; padding:2px 7px; border-radius:4px; display:inline-flex; align-items:center; gap:3px;" title="Test connectivity across Laptop, Cloud, and Store PC">↻ Check</button>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:12px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div>
+              <div style="color:var(--text-muted); font-size:11px;">Active Company:</div>
+              <div id="setupTallyCompany" style="font-weight:700; color:var(--text-primary); margin-top:2px;">Detecting...</div>
+            </div>
+            <div>
+              <div style="color:var(--text-muted); font-size:11px;">Tally GUID:</div>
+              <div id="setupTallyGuid" style="font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); word-break:break-all; margin-top:2px;">—</div>
+            </div>
+          </div>
+
+          <!-- Store PC Bridge Row -->
+          <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+            <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary);">
+              <span id="setupStorePcDot" style="width:7px; height:7px; border-radius:50%; background:#10b981; display:inline-block;"></span>
+              <span>Billing Counter PC: <strong id="setupStorePcName" style="color:var(--text-primary);">Store Terminal</strong></span>
+            </div>
+            <span id="setupStorePcStatus" style="color:#10b981; font-weight:600;">● TallyPrime Online (Port 9000)</span>
+          </div>
+        </div>
+
+        <!-- Quick Action Toolbar in Modal -->
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:8px; background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.05);">
+          <span style="font-size:11px; font-weight:600; color:var(--text-muted);">Quick Actions:</span>
+          <div style="display:flex; gap:6px;">
+            <button type="button" id="btnToggleNewGodownInModal" class="btn btn-outline" style="font-size:11px; padding:3px 8px; height:28px; display:inline-flex; align-items:center; gap:4px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              + Create Godown
+            </button>
+            <button type="button" id="btnSyncStockInModal" class="btn btn-outline" style="font-size:11px; padding:3px 8px; height:28px; display:inline-flex; align-items:center; gap:4px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Sync Stock Now
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:12px;">
+          <label style="font-weight:600; display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span>Select Godown for this Store*</span>
+            <span style="display:flex; align-items:center; gap:6px;">
+              <span id="tallyGodownDetectStatus" style="font-size:11px; color:var(--status-emerald); font-weight:normal; font-family:var(--font-mono);">Live from Tally ERP</span>
+              <button type="button" id="btnRefreshGodowns" style="background:rgba(59, 130, 246, 0.1); border:1px solid rgba(59, 130, 246, 0.25); color:#60a5fa; cursor:pointer; font-size:11px; padding:1px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:3px;" title="Re-fetch godowns from Tally">↻ Refresh</button>
+            </span>
+          </label>
+          <select id="selectSaaSTargetGodown" class="form-input" style="height:38px; cursor:pointer;">
+            <option value="Online_saree" selected>📦 Online_saree (Root Godown)</option>
+            <option value="Sarees">📁 Sarees (Root Godown)</option>
+            <option value="Main Location">📦 Main Location (Tally Default)</option>
+            <option value="Jari">📦 Jari (Root Godown)</option>
+            <option value="Online_Warehouse">📦 Online_Warehouse (Root Godown)</option>
+            <option value="__NEW__">+ Create New Godown in Tally...</option>
+          </select>
+        </div>
+
+        <!-- Custom Godown Input (revealed when __NEW__ is selected) -->
+        <div id="customGodownWrap" style="display:none; margin-bottom:12px;">
+          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
+            New Godown Name in Tally:
+          </label>
+          <input type="text" id="inputCustomGodownName" class="form-input" placeholder="e.g. Sarees or Tumakuru Showroom" style="height:36px;">
+          <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">
+            Will be created automatically in your Tally ERP company masters.
+          </div>
+        </div>
+
+        <!-- Live Godown Hierarchy & Isolation Preview Card -->
+        <div id="godownHierarchyInfoWrap" style="display:none; margin-bottom:14px; background:rgba(30, 41, 59, 0.5); border:1px solid rgba(59, 130, 246, 0.25); border-radius:var(--radius-sm); padding:10px 12px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <span style="font-size:11px; font-weight:700; text-transform:uppercase; color:#60a5fa; letter-spacing:0.5px; display:flex; align-items:center; gap:5px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              Hierarchy &amp; Isolation Scope
+            </span>
+            <span id="godownSubCountBadge" style="font-size:10px; font-weight:600; padding:1px 6px; border-radius:10px; background:rgba(59, 130, 246, 0.15); color:#93c5fd;">Direct Godown</span>
+          </div>
+          <div id="godownHierarchyTreeText" style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); line-height:1.5; white-space:pre-wrap;"></div>
+        </div>
+
+        <div style="background:rgba(16, 185, 129, 0.08); border:1px solid rgba(16, 185, 129, 0.2); border-radius:var(--radius-sm); padding:10px 12px; display:flex; gap:10px; align-items:center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-emerald)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <div style="font-size:11px; color:var(--text-secondary); line-height:1.4;">
+            <strong>GUID Binding Guarantee</strong>: Once paired, only this verified Tally instance can update stock or process orders in the cloud.
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btnCancelGodownSetup">Cancel</button>
+        <button class="btn btn-primary" id="btnSaveGodownSetup">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Save & Switch Godown
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: PAIR & LOCK PC TERMINAL (ZEE5 6-CHARACTER ACTIVATION)
+       ========================================================================= -->
+  <div class="modal-overlay" id="modalPairDevice" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:34px; height:34px; border-radius:var(--radius-sm); background:rgba(59, 130, 246, 0.15); color:#60a5fa; display:flex; align-items:center; justify-content:center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <div>
+            <h3 style="margin:0; font-size:15px; font-weight:700;">Pair &amp; Lock PC Terminal</h3>
+            <div style="font-size:11px; color:var(--text-muted);">Zee5 6-Character Terminal Activation</div>
+          </div>
+        </div>
+        <button class="close-btn" onclick="closePairDeviceModal()" aria-label="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">
+            6-Character Activation Code (from PC Screen)*
+          </label>
+          <input type="text" id="inputPairDeviceCode" class="form-input" placeholder="e.g. K9T-4W2" maxlength="7" style="height:44px; font-family:var(--font-mono); font-size:18px; font-weight:700; letter-spacing:2px; text-transform:uppercase; text-align:center;">
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">
+            Terminal Name / Location Label*
+          </label>
+          <input type="text" id="inputPairDeviceName" class="form-input" placeholder="e.g. Counter 1 - Showroom" style="height:38px;">
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px;">
+          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">
+            Select Godown Storage to Lock This Terminal To*
+          </label>
+          <select id="selectPairDeviceGodown" class="form-input" style="height:38px; cursor:pointer;">
+            <option value="Online_saree" selected>📦 Online_saree (Default)</option>
+            <option value="Main Location">📦 Main Location</option>
+            <option value="Sarees">📁 Sarees</option>
+            <option value="Tumakuru Showroom">📦 Tumakuru Showroom</option>
+          </select>
+        </div>
+
+        <div style="background:rgba(59, 130, 246, 0.08); border:1px solid rgba(59, 130, 246, 0.25); border-radius:var(--radius-sm); padding:10px 12px; display:flex; gap:10px; align-items:flex-start;">
+          <span style="font-size:16px; line-height:1;">🔒</span>
+          <div style="font-size:11.5px; color:#cbd5e1; line-height:1.45;">
+            <strong>Hardware Godown Lock:</strong> Once paired, this PC terminal will be permanently locked to this Godown. It will strictly access only this godown's products, stock, media, and sales. Only Master Admin can reassign or unpair it.
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closePairDeviceModal()">Cancel</button>
+        <button class="btn btn-primary" id="btnApprovePairDevice" onclick="submitApproveDeviceCode()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Authorize &amp; Lock Terminal
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: CONNECTED TERMINALS & GODOWN LOCK REGISTRY
+       ========================================================================= -->
+  <div class="modal-overlay" id="modalConnectedDevices" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 680px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:34px; height:34px; border-radius:var(--radius-sm); background:rgba(16, 185, 129, 0.15); color:#10b981; display:flex; align-items:center; justify-content:center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <div>
+            <h3 style="margin:0; font-size:15px; font-weight:700;">Paired Terminals &amp; Devices</h3>
+            <div style="font-size:11px; color:var(--text-muted);">Hardware Godown Locks &amp; Cloud Registry</div>
+          </div>
+        </div>
+        <button class="close-btn" onclick="closeConnectedDevicesModal()" aria-label="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div id="deviceRegistryRoleBanner" style="font-size:12px; color:#94a3b8;">
+            Signed in as: <strong id="currentAdminEmailBadge" style="color:#ffffff;">Checking...</strong>
+          </div>
+          <button class="btn btn-outline" style="font-size:11.5px; padding:3px 8px; height:28px;" onclick="loadConnectedDevicesList()">↻ Refresh List</button>
+        </div>
+
+        <div id="connectedDevicesListContainer" style="display:flex; flex-direction:column; gap:8px; max-height:360px; overflow-y:auto;">
+          <div style="text-align:center; padding:30px; color:#94a3b8; font-size:12px;">Loading connected devices...</div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeConnectedDevicesModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: ADJUST STOCK IN TALLY
+       ========================================================================= -->
+  <div class="modal-overlay" id="adjustStockModal" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 id="adjustModalTitle">Update Tally Stock</h3>
+        <button class="close-btn" id="closeAdjustStockModalBtn" aria-label="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="adjustStockSku">
+        <div style="padding:10px 12px; background:var(--bg-canvas); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:12px;">
+          <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-family:var(--font-mono);">Target Product</div>
+          <div id="adjustModalSareeName" style="font-weight:600; color:var(--text-primary); margin-top:2px;">—</div>
+          <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:12px;">
+            <span>Godown: <strong id="adjustModalGodownLabel" style="color:#38bdf8;">Sarees</strong></span>
+            <span>Current Stock: <strong id="adjustModalCurrentStock" style="color:var(--status-emerald);">0 Nos</strong></span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Target Quantity (Units)*</label>
+          <input type="number" id="adjustTargetQuantityInput" class="form-input" min="0" placeholder="e.g. 10">
+        </div>
+
+        <div class="form-group">
+          <label>Audit Narration (Optional)</label>
+          <input type="text" id="adjustReasonInput" class="form-input" placeholder="e.g. Physical inventory count verified">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btnCancelAdjustModal">Cancel</button>
+        <button class="btn btn-primary" id="btnConfirmAdjustStock">
+          Submit to Tally
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: RESOLVE STOCK DISCREPANCY (PHASE 2)
+       ========================================================================= -->
+  <div class="modal-overlay" id="discrepancyModal" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 id="discrepancyModalTitle">Resolve Stock Discrepancy</h3>
+        <button class="close-btn" id="closeDiscrepancyModalBtn" aria-label="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="discModalId">
+        <input type="hidden" id="discModalProductCode">
+
+        <!-- Discrepancy Item Summary -->
+        <div style="padding:12px; background:var(--bg-canvas); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong id="discModalItemCode" style="font-family:var(--font-mono); color:#38bdf8; font-size:12px;">—</strong>
+            <span id="discModalDeltaBadge" class="status-chip error">-1 Variance</span>
+          </div>
+          <div id="discModalItemName" style="font-weight:600; color:var(--text-primary); font-size:13px; margin-top:4px;">—</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; font-size:12px;">
+            <div>Cloud Expected: <strong id="discModalExpectedQty" style="font-family:var(--font-mono); color:var(--text-primary);">0</strong></div>
+            <div>Tally Actual: <strong id="discModalActualQty" style="font-family:var(--font-mono); color:var(--status-rose);">0</strong></div>
+          </div>
+          <div id="discModalExplanation" style="font-size:11px; color:var(--text-muted); margin-top:6px;">—</div>
+        </div>
+
+        <!-- Strategy Selection -->
+        <div class="form-group">
+          <label style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">Resolution Strategy*</label>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <label style="display:flex; align-items:flex-start; gap:10px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer; background:var(--bg-surface);">
+              <input type="radio" name="discResolutionAction" value="accept_tally" checked style="margin-top:2px;">
+              <div>
+                <strong style="font-size:12px; color:var(--text-primary); display:block;">Accept Tally Balance</strong>
+                <span style="font-size:11px; color:var(--text-muted);">Sync cloud online stock down to match Tally count.</span>
+              </div>
+            </label>
+
+            <label style="display:flex; align-items:flex-start; gap:10px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer; background:var(--bg-surface);">
+              <input type="radio" name="discResolutionAction" value="keep_cloud" style="margin-top:2px;">
+              <div>
+                <strong style="font-size:12px; color:var(--text-primary); display:block;">Retain Cloud Balance</strong>
+                <span style="font-size:11px; color:var(--text-muted);">Retain cloud balance (e.g., Tally voucher entry pending).</span>
+              </div>
+            </label>
+
+            <label style="display:flex; align-items:flex-start; gap:10px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer; background:var(--bg-surface);">
+              <input type="radio" name="discResolutionAction" value="manual_count" style="margin-top:2px;">
+              <div>
+                <strong style="font-size:12px; color:var(--text-primary); display:block;">Verified Physical Count</strong>
+                <span style="font-size:11px; color:var(--text-muted);">Set explicit quantity verified on the shop shelf.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Verified Quantity (shown if manual_count selected) -->
+        <div class="form-group" id="discVerifiedQtyGroup" style="display:none; margin-top:8px;">
+          <label>Verified Physical Shelf Quantity (Units)*</label>
+          <input type="number" id="discVerifiedQtyInput" class="form-input" min="0" placeholder="e.g. 5">
+        </div>
+
+        <div class="form-group" style="margin-top:8px;">
+          <label>Audit Notes (Optional)</label>
+          <textarea id="discNotesInput" class="form-input" rows="2" placeholder="e.g. Shelf count verified by store staff..."></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btnCancelDiscrepancyModal">Cancel</button>
+        <button class="btn btn-primary" id="btnConfirmResolveDiscrepancy">
+          Confirm Resolution
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: MANUAL INVENTORY ADJUSTMENT (SHOP PC OFFLINE)
+       ========================================================================= -->
+  <div class="modal-overlay" id="downtimeModal" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 460px;">
+      <div class="modal-header">
+        <h3 id="downtimeModalTitle">Manual Inventory Adjustment</h3>
+        <button class="close-btn" id="closeDowntimeModalBtn" aria-label="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div style="background:var(--bg-surface-elevated); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 12px; margin-bottom:12px; font-size:12px; color:var(--text-secondary);">
+          <strong style="color:var(--text-primary);">Terminal Disconnected:</strong>
+          Adjusts cloud inventory directly to maintain continuous customer availability. Changes are logged with an audit trail.
+        </div>
+
+        <div class="form-group">
+          <label>Target Product*</label>
+          <select id="dtTargetSareeSelect" class="form-select"></select>
+        </div>
+
+        <div style="padding:10px 12px; background:var(--bg-canvas); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:10px; font-size:12px;">
+          <div style="display:flex; justify-content:space-between;">
+            <span>Current Online Stock:</span>
+            <strong id="dtCurrentOnlineQty" style="font-family:var(--font-mono); color:var(--text-primary);">0 Nos</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-top:4px;">
+            <span>Reserved in Active Orders:</span>
+            <strong id="dtCurrentHeldQty" style="font-family:var(--font-mono); color:var(--status-amber);">0 Nos</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-top:4px;">
+            <span>Available for Purchase:</span>
+            <strong id="dtCurrentAvailableQty" style="font-family:var(--font-mono); color:var(--status-emerald);">0 Nos</strong>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>New Verified Stock (Units)*</label>
+          <input type="number" id="dtNewQuantityInput" class="form-input" min="0" placeholder="e.g. 8">
+        </div>
+
+        <div class="form-group">
+          <label>Audit Narration*</label>
+          <input type="text" id="dtReasonInput" class="form-input" placeholder="e.g. Shelf audit during shop PC maintenance">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btnCancelDowntimeModal">Cancel</button>
+        <button class="btn btn-primary" id="btnConfirmDowntimeEntry">
+          Save Adjustment
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: ADD NEW SAREE TO CATALOG
+       ========================================================================= -->
+  <div class="modal-overlay" id="addSareeModal" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 540px;">
+      <div class="modal-header">
+        <h3 id="addSareeModalTitle">Add New Saree to Catalog</h3>
+        <button class="close-btn" id="closeAddSareeModalBtn" aria-label="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div class="form-group">
+            <label>SKU / Base Product Code*</label>
+            <input type="text" id="asSkuInput" class="form-input" placeholder="e.g. SAI-KANJ-02" style="font-family:var(--font-mono); text-transform:uppercase;">
+          </div>
+          <div class="form-group" id="asSingleStockGroup">
+            <label>Initial Online Stock (Units)*</label>
+            <input type="number" id="asStockInput" class="form-input" min="0" value="5">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Saree Title / Product Name*</label>
+          <input type="text" id="asNameInput" class="form-input" placeholder="e.g. Royal Peacock Blue Kanjivaram Silk Saree">
+        </div>
+
+        <!-- Multi-color Variants Toggle -->
+        <div style="background:rgba(56, 189, 248, 0.08); border:1px solid rgba(56, 189, 248, 0.25); border-radius:var(--radius-sm); padding:10px 12px; margin-bottom:12px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; font-weight:600; color:#38bdf8; margin:0;">
+            <input type="checkbox" id="asHasVariants" style="accent-color:#38bdf8; width:15px; height:15px; cursor:pointer;">
+            <span>Has Multiple Colors / Variants (e.g. Red, Blue with separate stock counts)</span>
+          </label>
+        </div>
+
+        <!-- Variants Dynamic Section -->
+        <div id="asVariantsSection" style="display:none; margin-bottom:14px; background:var(--bg-canvas); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <label style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin:0;">Color Variants & Stock Allocation</label>
+            <button type="button" class="btn btn-sm btn-outline" id="btnAddVariantRow" style="padding:2px 8px; font-size:11px; display:flex; align-items:center; gap:4px;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Color
+            </button>
+          </div>
+          <div id="asVariantsList" style="display:flex; flex-direction:column; gap:8px;">
+            <!-- Rows injected dynamically via JS -->
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">
+            Each color will receive its own individual SKU suffix (e.g. <code>-RED</code>, <code>-BLU</code>) and tracked stock in Tally ERP.
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div class="form-group">
+            <label>Selling Price (₹)*</label>
+            <input type="number" id="asPriceInput" class="form-input" min="0" placeholder="e.g. 6500">
+          </div>
+          <div class="form-group">
+            <label>MRP (₹)</label>
+            <input type="number" id="asMrpInput" class="form-input" min="0" placeholder="e.g. 8999">
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div class="form-group">
+            <label>Fabric Type</label>
+            <input type="text" id="asFabricInput" class="form-input" placeholder="e.g. Pure Kanchipuram Silk">
+          </div>
+          <div class="form-group">
+            <label>Weave / Craft Style</label>
+            <input type="text" id="asWeaveInput" class="form-input" placeholder="e.g. Handwoven Zari Brocade">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <label style="margin-bottom:0; font-weight:600;">Saree Photography (Upload Multiple Photos or URLs)</label>
+            <span id="asPhotoCountBadge" style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">0 Photos Selected</span>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="asPhotoUrlInput" class="form-input" placeholder="Paste image URL(s) (comma-separated for multiple)">
+            <button type="button" class="btn btn-outline" id="asBtnBrowsePhoto" style="display:inline-flex; align-items:center; gap:5px; white-space:nowrap;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Select Photos
+            </button>
+            <input type="file" id="asPhotoFileInput" accept="image/*" multiple style="display:none;">
+          </div>
+          <div id="asPhotoPreviewContainer" style="display:none; margin-top:10px;">
+            <div id="asPhotoPreviewGrid" style="display:flex; gap:8px; flex-wrap:wrap; padding:8px; background:var(--bg-canvas, rgba(0,0,0,0.2)); border:1px solid var(--border); border-radius:var(--radius-sm); max-height:160px; overflow-y:auto;"></div>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+            Select multiple photos at once. The first photo will be used as the primary catalog cover card photo.
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Craftsmanship Description (Used for Gemini AI Multimodal Search & WhatsApp Bot)</label>
+          <textarea id="asDescriptionInput" class="form-textarea" rows="3" placeholder="Describe motifs, zari border, pallu pattern, and color shade..."></textarea>
+        </div>
+        <div class="form-group" style="margin-top:6px; margin-bottom:0; background:rgba(99,102,241,0.06); padding:10px 12px; border-radius:var(--radius-sm); border:1px solid rgba(99,102,241,0.18);">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; font-weight:500; color:var(--text-primary); margin:0;">
+            <input type="checkbox" id="asSyncTallyCheckbox" checked style="accent-color:var(--accent-primary); width:15px; height:15px; cursor:pointer;">
+            <span>Automatically push & inward initial stock into designated Tally Godown (<strong id="asGodownBadge" style="color:var(--status-emerald);">Sarees</strong>)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btnCancelAddSareeModal">Cancel</button>
+        <button class="btn btn-primary" id="btnConfirmAddSaree">
+          Save & Publish Saree
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Non-blocking Delete Confirmation Modal -->
+  <div class="modal-overlay" id="deleteConfirmModal" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 440px; padding: 24px; text-align: center;">
+      <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--status-rose-bg); border: 1px solid var(--status-rose-border); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; color: var(--status-rose);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </div>
+      <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">Delete Saree</h3>
+      <p id="deleteConfirmMessage" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;">Are you sure you want to permanently delete this saree? This will remove it from the catalog and sync deletion to Tally ERP.</p>
+      <div style="display: flex; gap: 10px;">
+        <button class="btn btn-outline" id="btnCancelDeleteModal" style="flex: 1;" onclick="closeDeleteModal()">Cancel</button>
+        <button class="btn btn-primary" id="btnConfirmDeleteModal" style="flex: 1; background: var(--status-rose); border-color: var(--status-rose);" onclick="executeConfirmedDelete()">Delete Saree</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.closeDeleteModal = function() {
+      const modal = document.getElementById('deleteConfirmModal');
+      if (modal) modal.classList.remove('active');
+      window.pendingDeleteTarget = null;
+    };
+
+    // Universal Navigation Tab Switcher (Delegated, instant response)
+    document.addEventListener('click', function(e) {
+      const btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+      const targetId = btn.getAttribute('data-tab');
+      if (!targetId) return;
+
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+
+      btn.classList.add('active');
+      const panel = document.getElementById(targetId);
+      if (panel) {
+        panel.classList.add('active');
+      }
+
+      // If switching to specific tab, trigger its loader
+      if (targetId === 'tabStockLog') {
+        if (typeof loadDiscrepancies === 'function') loadDiscrepancies();
+        if (typeof loadSyncRuns === 'function') loadSyncRuns();
+      } else if (targetId === 'tabVideos') {
+        if (typeof loadVideoRecords === 'function') loadVideoRecords();
+      } else if (targetId === 'tabInventory') {
+        if (typeof loadStoredProducts === 'function') loadStoredProducts();
+      }
+    });
+  </script>
+  </div> <!-- /#authenticatedApp -->
+
+  <script>
+    let supabaseClient = null;
+    window.isUserAuthenticated = false;
+    window.supabaseToken = null;
+
+    let selectedStore = {
+      id: 'SAI_STORE',
+      name: 'Sai Traders',
+      godown: 'Sarees',
+      isCustom: false
+    };
+
+    async function loadDynamicStoreOptions() {
+      const icon = document.getElementById('envDetectIcon');
+      const title = document.getElementById('envDetectTitle');
+      const sub = document.getElementById('envDetectSubtitle');
+      const badge = document.getElementById('envDetectBadge');
+      const list = document.getElementById('storeOptionsList');
+      const customWrap = document.getElementById('step1CustomGodownWrap');
+
+      try {
+        const [identRes, godownRes] = await Promise.all([
+          fetch('/api/admin/tally-identity').then(r => r.json()).catch(() => null),
+          fetch('/api/admin/godowns/list').then(r => r.json()).catch(() => null)
+        ]);
+
+        const isLocalTally = Boolean(identRes?.localTallyConnected && identRes?.currentlyConnected);
+        const isRemoteStore = Boolean(identRes?.remoteGwOnline || identRes?.remoteStoreConnected);
+        const currentTally = identRes?.currentlyConnected;
+        const godowns = (godownRes?.godowns && godownRes.godowns.length > 0)
+          ? godownRes.godowns 
+          : (godownRes?.activeGodown ? [godownRes.activeGodown] : ['Main Location']);
+        const activeGodown = godownRes?.activeGodown || 'Sarees';
+
+        if (isLocalTally) {
+          if (icon) {
+            icon.style.background = 'rgba(34, 197, 94, 0.15)';
+            icon.style.color = '#4ade80';
+            icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>';
+          }
+          if (title) title.innerText = `TallyPrime Connected: ${currentTally.companyName || 'Active Company'}`;
+          if (sub) sub.innerText = `GUID: ${currentTally.guid || 'Verified'} · Port 9000 Active`;
+          if (badge) {
+            badge.innerText = 'Local ERP';
+            badge.style.background = 'rgba(34, 197, 94, 0.15)';
+            badge.style.color = '#4ade80';
+            badge.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+          }
+
+          let html = '';
+          godowns.forEach((g, idx) => {
+            const isChecked = idx === 0 ? 'checked' : '';
+            const borderStyle = idx === 0 ? 'border-color:#3b82f6; background:rgba(37,99,235,0.12);' : 'border-color:rgba(255,255,255,0.08); background:rgba(255,255,255,0.02);';
+            html += `
+              <label class="store-select-option" style="display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid; ${borderStyle} border-radius:10px; cursor:pointer; transition:all 0.15s ease;">
+                <input type="radio" name="storeSelection" value="TALLY_${g}" data-name="${currentTally.companyName || 'Sai Traders'}" data-godown="${g}" ${isChecked} style="accent-color:#3b82f6; width:16px; height:16px; cursor:pointer;">
+                <div style="flex:1;">
+                  <div style="font-size:13px; font-weight:700; color:#ffffff;">${g}</div>
+                  <div style="font-size:11px; color:#94a3b8;">Active Tally Godown · In-Store Local Sync</div>
+                </div>
+                <span style="font-size:10.5px; padding:2px 7px; border-radius:100px; background:rgba(34,197,94,0.12); color:#4ade80; border:1px solid rgba(34,197,94,0.25); font-weight:600;">Live ERP</span>
+              </label>
+            `;
+          });
+
+          html += `
+            <label class="store-select-option" style="display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.02); border-radius:10px; cursor:pointer; transition:all 0.15s ease;">
+              <input type="radio" name="storeSelection" value="__custom__" data-name="${currentTally.companyName || 'Sai Traders'}" data-godown="" style="accent-color:#3b82f6; width:16px; height:16px; cursor:pointer;">
+              <div style="flex:1;">
+                <div style="font-size:13px; font-weight:700; color:#ffffff;">+ Create New Godown in Tally...</div>
+                <div style="font-size:11px; color:#94a3b8;">Specify a new location name to automatically create in Tally ERP</div>
+              </div>
+            </label>
+          `;
+
+          if (list) list.innerHTML = html;
+          selectedStore = {
+            id: `TALLY_${godowns[0]}`,
+            name: currentTally.companyName || 'Sai Traders',
+            godown: godowns[0],
+            isCustom: false
+          };
+        } else {
+          // Store PC AISHWARYA (Always visible whether turned ON or OFF)
+          const storeHost = identRes?.remoteHostname || 'AISHWARYA';
+          const isOnline = Boolean(identRes?.remoteGwOnline);
+
+          if (isOnline) {
+            // AISHWARYA IS ONLINE
+            if (icon) {
+              icon.style.background = 'rgba(34, 197, 94, 0.15)';
+              icon.style.color = '#4ade80';
+              icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+            }
+            if (title) title.innerText = `🟢 Store PC Connected: ${storeHost}`;
+            if (sub) sub.innerText = `Live In-Store Agent Active · Connected via Cloud Gateway`;
+            if (badge) {
+              badge.innerText = 'Online';
+              badge.style.background = 'rgba(34, 197, 94, 0.15)';
+              badge.style.color = '#4ade80';
+              badge.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+            }
+          } else {
+            // AISHWARYA IS OFFLINE (Cloud Mode)
+            if (icon) {
+              icon.style.background = 'rgba(59, 130, 246, 0.15)';
+              icon.style.color = '#60a5fa';
+              icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>';
+            }
+            if (title) title.innerText = `🌐 Store PC: ${storeHost} (Offline · Cloud Mode)`;
+            if (sub) sub.innerText = `Store computer offline · Operating via Supabase Cloud`;
+            if (badge) {
+              badge.innerText = 'Cloud Mode';
+              badge.style.background = 'rgba(59, 130, 246, 0.15)';
+              badge.style.color = '#93c5fd';
+              badge.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+            }
+          }
+
+          const statusBadge = isOnline
+            ? '<span style="font-size:10.5px; padding:2px 7px; border-radius:100px; background:rgba(34,197,94,0.12); color:#4ade80; border:1px solid rgba(34,197,94,0.25); font-weight:600;">🟢 Live ERP</span>'
+            : '<span style="font-size:10.5px; padding:2px 7px; border-radius:100px; background:rgba(255,255,255,0.06); color:#94a3b8; border:1px solid rgba(255,255,255,0.15); font-weight:600;">⚪ Offline (Cloud)</span>';
+
+          const statusDesc = isOnline
+            ? `Store PC (${storeHost}) Active · Live Tally Stock & In-Store Sync`
+            : `Store PC (${storeHost}) Offline · Orders & Catalog Access via Supabase Cloud`;
+
+          let html = `
+            <label class="store-select-option" style="display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid #3b82f6; background:rgba(37,99,235,0.12); border-radius:10px; cursor:pointer; transition:all 0.15s ease;">
+              <input type="radio" name="storeSelection" value="STORE_${storeHost}" data-name="Sai Traders (${storeHost})" data-godown="${activeGodown}" checked style="accent-color:#3b82f6; width:16px; height:16px; cursor:pointer;">
+              <div style="flex:1;">
+                <div style="font-size:13px; font-weight:700; color:#ffffff;">Sai Traders — ${storeHost} (${activeGodown})</div>
+                <div style="font-size:11px; color:#94a3b8;">${statusDesc}</div>
+              </div>
+              ${statusBadge}
+            </label>
+          `;
+
+          if (list) list.innerHTML = html;
+          selectedStore = {
+            id: `STORE_${storeHost}`,
+            name: `Sai Traders (${storeHost})`,
+            godown: activeGodown,
+            isCustom: false
+          };
+        }
+
+        // Attach dynamic radio click listeners
+        document.querySelectorAll('input[name="storeSelection"]').forEach(radio => {
+          radio.addEventListener('change', (e) => {
+            document.querySelectorAll('.store-select-option').forEach(el => {
+              el.style.borderColor = 'rgba(255,255,255,0.08)';
+              el.style.background = 'rgba(255,255,255,0.02)';
+            });
+            const parent = e.target.closest('.store-select-option');
+            if (parent) {
+              parent.style.borderColor = '#3b82f6';
+              parent.style.background = 'rgba(37,99,235,0.12)';
+            }
+            if (e.target.value === '__custom__') {
+              if (customWrap) {
+                customWrap.style.display = 'block';
+                const input = document.getElementById('step1CustomGodownInput');
+                if (input) input.focus();
+              }
+            } else {
+              if (customWrap) customWrap.style.display = 'none';
+              selectedStore = {
+                id: e.target.value,
+                name: e.target.getAttribute('data-name'),
+                godown: e.target.getAttribute('data-godown'),
+                isCustom: false
+              };
+            }
+          });
+        });
+
+      } catch (err) {
+        console.error('[StoreSetup] Failed to detect environment:', err);
+        if (list) list.innerHTML = '<div style="text-align:center; padding:16px; color:#ef4444; font-size:12px;">Failed to detect store environment. Check server connection.</div>';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadDynamicStoreOptions();
+    });
+
+    window.proceedToAuthStep = function() {
+      const checked = document.querySelector('input[name="storeSelection"]:checked');
+      if (!checked) {
+        alert('Please select a store or godown location to continue.');
+        return;
+      }
+
+      if (checked.value === '__custom__') {
+        const customInput = document.getElementById('step1CustomGodownInput');
+        const customName = (customInput ? customInput.value : '').trim();
+        if (!customName) {
+          alert('Please enter a new godown name to create in Tally.');
+          if (customInput) customInput.focus();
+          return;
+        }
+        selectedStore = {
+          id: 'TALLY_CUSTOM_' + customName.replace(/\s+/g, '_').toUpperCase(),
+          name: checked.getAttribute('data-name') || 'Sai Traders',
+          godown: customName,
+          isCustom: true
+        };
+      } else {
+        selectedStore = {
+          id: checked.value,
+          name: checked.getAttribute('data-name'),
+          godown: checked.getAttribute('data-godown'),
+          isCustom: false
+        };
+      }
+
+      localStorage.setItem('sai_active_store', JSON.stringify(selectedStore));
+      
+      const step1 = document.getElementById('step1StoreCard');
+      const step2 = document.getElementById('step2AuthCard');
+      const storeNameLabel = document.getElementById('authSelectedStoreName');
+      const stepText = document.getElementById('stepIndicatorText');
+      
+      if (step1) step1.style.display = 'none';
+      if (step2) step2.style.display = 'block';
+      if (storeNameLabel) storeNameLabel.innerText = `${selectedStore.name} (${selectedStore.godown})`;
+      if (stepText) stepText.innerText = 'Step 2 of 2: Admin Sign In';
+      
+      const emailInput = document.getElementById('authEmailInput');
+      if (emailInput) {
+        emailInput.value = '';
+        emailInput.focus();
+      }
+      const passInput = document.getElementById('authPasswordInput');
+      if (passInput) passInput.value = '';
+    };
+
+    window.backToStoreSelection = function() {
+      const step1 = document.getElementById('step1StoreCard');
+      const step2 = document.getElementById('step2AuthCard');
+      const stepText = document.getElementById('stepIndicatorText');
+      if (step2) step2.style.display = 'none';
+      if (step1) step1.style.display = 'block';
+      if (stepText) stepText.innerText = 'Step 1 of 2: Select Store Location';
+    };
+
+    // Intercept window.fetch to automatically append Bearer token & Device token to all /api/ endpoints
+    const _nativeFetch = window.fetch;
+    window.fetch = function(input, init = {}) {
+      const urlStr = typeof input === 'string' ? input : (input?.url || '');
+      if (urlStr.startsWith('/api/') || urlStr.includes('/api/')) {
+        init = Object.assign({}, init);
+        const headers = new Headers(init.headers || {});
+        const devTok = localStorage.getItem('sai_device_token');
+        if (devTok && !headers.has('x-device-token')) {
+          headers.set('x-device-token', devTok);
+        }
+        const sbTok = window.supabaseToken || localStorage.getItem('sb_access_token');
+        if (sbTok && !headers.has('Authorization')) {
+          headers.set('Authorization', 'Bearer ' + sbTok);
+        }
+        init.headers = headers;
+        if (!init.credentials) init.credentials = 'same-origin';
+      }
+      return _nativeFetch(input, init);
+    };
+
+    function setAuthCookie(token) {
+      if (token) {
+        document.cookie = `sb_access_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Max-Age=604800`;
+      } else {
+        document.cookie = `sb_access_token=; Path=/; SameSite=Lax; Max-Age=0`;
+      }
+    }
+
+    function revealDashboard(user, method) {
+      window.isUserAuthenticated = true;
+      const authScreen = document.getElementById('authFirstScreen');
+      const appContainer = document.getElementById('authenticatedApp');
+      if (authScreen) authScreen.style.display = 'none';
+      if (appContainer) appContainer.style.display = 'block';
+
+      // Read active store / device context
+      let storeCtx = selectedStore || {};
+      try {
+        const saved = localStorage.getItem('sai_active_store');
+        if (saved) storeCtx = JSON.parse(saved);
+      } catch (_) {}
+
+      const devTok = localStorage.getItem('sai_device_token');
+      const isDevLocked = Boolean(storeCtx.locked || window.isDeviceLocked || devTok);
+
+      // Update Header Badges
+      const storeBadge = document.getElementById('activeStoreHeaderBadge');
+      const godownBadge = document.getElementById('activeGodownBadge');
+      const switchTag = document.querySelector('.loc-switch-tag');
+      const headerStoreContainer = document.getElementById('activeStoreHeaderContainer');
+      const btnPairDevice = document.getElementById('btnHeaderPairDevice');
+
+      if (isDevLocked) {
+        window.isDeviceLocked = true;
+        const lockedGodown = storeCtx.godown || window.lockedGodown || 'Online_saree';
+        const terminalName = storeCtx.name || window.deviceName || 'Store Terminal';
+        if (storeBadge) storeBadge.innerText = terminalName;
+        if (godownBadge) {
+          godownBadge.innerHTML = `<span style="color:#10b981; font-weight:700;">🔒 Locked: ${lockedGodown}</span>`;
+        }
+        if (switchTag) switchTag.style.display = 'none';
+        if (headerStoreContainer) {
+          headerStoreContainer.title = `Hardware Locked: This terminal is bound exclusively to ${lockedGodown}`;
+        }
+        if (btnPairDevice && method === 'device') {
+          btnPairDevice.style.display = 'none';
+        }
+      } else {
+        if (storeBadge) storeBadge.innerText = storeCtx.name || 'Sai Traders Operations';
+        if (godownBadge && storeCtx.godown) godownBadge.innerText = storeCtx.godown;
+        if (switchTag) switchTag.style.display = 'inline-block';
+        if (btnPairDevice) btnPairDevice.style.display = 'inline-flex';
+      }
+
+      // Synchronize backend godown and pair Tally if needed
+      if (storeCtx && storeCtx.godown) {
+        fetch('/api/admin/godowns/configure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ godownName: storeCtx.godown })
+        }).catch(e => console.warn('[Auth] Godown sync notice:', e.message));
+      }
+
+      // Update User Badge in Header
+      const badge = document.getElementById('supabaseUserBadge');
+      const avatar = document.getElementById('userAvatar');
+      const emailText = document.getElementById('userEmailText');
+      if (badge) badge.style.display = 'inline-flex';
+      const email = user?.email || (isDevLocked ? (storeCtx.name || 'terminal') : 'admin');
+      if (emailText) emailText.innerText = isDevLocked ? (storeCtx.name || 'Store Terminal') : email.split('@')[0];
+      if (avatar) avatar.innerText = isDevLocked ? '🖥️' : (email[0] || 'A').toUpperCase();
+
+      // Launch data loaders
+      if (typeof window.startAppAfterAuth === 'function') {
+        window.startAppAfterAuth();
+      }
+    }
+
+    function hideDashboardAndRequireAuth() {
+      window.isUserAuthenticated = false;
+      window.supabaseToken = null;
+      setAuthCookie(null);
+      const authScreen = document.getElementById('authFirstScreen');
+      const appContainer = document.getElementById('authenticatedApp');
+      if (appContainer) appContainer.style.display = 'none';
+      if (authScreen) authScreen.style.display = 'flex';
+
+      const pairCard = document.getElementById('stepZee5PairCard');
+      const authCard = document.getElementById('step2AuthCard');
+      const stepText = document.getElementById('stepIndicatorText');
+
+      if (pairCard) pairCard.style.display = 'block';
+      if (authCard) authCard.style.display = 'none';
+      if (stepText) stepText.innerText = 'Device Activation: Pair with Admin Console';
+
+      const badge = document.getElementById('supabaseUserBadge');
+      if (badge) badge.style.display = 'none';
+
+      initZee5DevicePairing();
+    }
+
+    // =========================================================================
+    // ZEE5 6-CHARACTER DEVICE PAIRING LOGIC
+    // =========================================================================
+    let zee5PollTimer = null;
+    let zee5CountdownTimer = null;
+    let currentPairCode = null;
+
+    async function initZee5DevicePairing() {
+      const existingToken = localStorage.getItem('sai_device_token');
+      if (existingToken) {
+        try {
+          const res = await fetch('/api/auth/device-session', {
+            headers: { 'x-device-token': existingToken }
+          });
+          const data = await res.json();
+          if (data.success && data.device && data.device.status === 'active') {
+            window.isDeviceLocked = true;
+            window.lockedGodown = data.device.godown;
+            window.deviceName = data.device.deviceName;
+            localStorage.setItem('sai_active_store', JSON.stringify({
+              name: data.device.deviceName,
+              godown: data.device.godown,
+              locked: true
+            }));
+            revealDashboard({ id: data.device.id, email: data.device.deviceName }, 'device');
+            return;
+          } else {
+            localStorage.removeItem('sai_device_token');
+          }
+        } catch (err) {
+          console.warn('[Zee5] Error validating device session:', err);
+        }
+      }
+
+      await generateZee5PairCode();
+    }
+
+    window.generateZee5PairCode = async function() {
+      try {
+        if (zee5PollTimer) clearInterval(zee5PollTimer);
+        if (zee5CountdownTimer) clearInterval(zee5CountdownTimer);
+
+        const storedDevId = localStorage.getItem('sai_device_id') || ('term_' + Math.random().toString(36).substring(2, 9));
+        localStorage.setItem('sai_device_id', storedDevId);
+
+        const res = await fetch('/api/auth/device-pair-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: storedDevId,
+            deviceName: 'Store Terminal PC',
+            platform: navigator.platform || 'PC'
+          })
+        });
+
+        const data = await res.json();
+        if (!data.success || !data.code) {
+          throw new Error(data.error || 'Failed to generate pairing code');
+        }
+
+        currentPairCode = data.code;
+        renderZee5Code(currentPairCode);
+        startZee5Countdown(data.expiresInSeconds || 900);
+        startZee5Polling(currentPairCode, storedDevId);
+      } catch (err) {
+        console.error('[Zee5] Pairing code error:', err);
+        const codeBox = document.getElementById('zee5CodeBox');
+        if (codeBox) codeBox.innerHTML = `<span style="color:#f87171; font-size:14px;">Error: ${err.message}</span>`;
+      }
+    };
+
+    function renderZee5Code(code) {
+      const clean = code.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+      const part1 = clean.slice(0, 3);
+      const part2 = clean.slice(3, 6);
+
+      const html = `
+        <div class="zee5-code-char pulse-char">${part1[0] || '-'}</div>
+        <div class="zee5-code-char pulse-char">${part1[1] || '-'}</div>
+        <div class="zee5-code-char pulse-char">${part1[2] || '-'}</div>
+        <div class="zee5-code-separator">-</div>
+        <div class="zee5-code-char pulse-char">${part2[0] || '-'}</div>
+        <div class="zee5-code-char pulse-char">${part2[1] || '-'}</div>
+        <div class="zee5-code-char pulse-char">${part2[2] || '-'}</div>
+      `;
+      const codeBox = document.getElementById('zee5CodeBox');
+      if (codeBox) codeBox.innerHTML = html;
+    }
+
+    function startZee5Countdown(totalSeconds) {
+      let remaining = totalSeconds;
+      const timerEl = document.getElementById('zee5TimerText');
+      const updateText = () => {
+        const mins = Math.floor(remaining / 60);
+        const secs = remaining % 60;
+        if (timerEl) timerEl.innerText = `Code expires in ${mins}:${secs < 10 ? '0' : ''}${secs}`;
+      };
+      updateText();
+
+      zee5CountdownTimer = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          clearInterval(zee5CountdownTimer);
+          if (timerEl) timerEl.innerText = 'Code expired. Click Refresh to generate new code.';
+          if (zee5PollTimer) clearInterval(zee5PollTimer);
+        } else {
+          updateText();
+        }
+      }, 1000);
+    }
+
+    function startZee5Polling(code, deviceId) {
+      if (zee5PollTimer) clearInterval(zee5PollTimer);
+
+      zee5PollTimer = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/auth/device-pair-status?code=${encodeURIComponent(code)}&deviceId=${encodeURIComponent(deviceId)}`);
+          const data = await res.json();
+          if (data.status === 'paired' && data.deviceToken) {
+            clearInterval(zee5PollTimer);
+            if (zee5CountdownTimer) clearInterval(zee5CountdownTimer);
+
+            localStorage.setItem('sai_device_token', data.deviceToken);
+            document.cookie = `sai_device_token=${data.deviceToken}; Path=/; SameSite=Lax; Max-Age=31536000`;
+            localStorage.setItem('sai_active_store', JSON.stringify({
+              name: data.deviceName || 'Store Terminal',
+              godown: data.godown,
+              locked: true
+            }));
+
+            window.isDeviceLocked = true;
+            window.lockedGodown = data.godown;
+            window.deviceName = data.deviceName;
+
+            const badge = document.getElementById('zee5StatusBadge');
+            if (badge) {
+              badge.innerHTML = `<span style="color:#10b981; font-weight:700;">✔ Device Authorized! Unlocking ${data.godown}...</span>`;
+            }
+
+            setTimeout(() => {
+              revealDashboard({ id: deviceId, email: data.deviceName }, 'device');
+            }, 1200);
+          } else if (data.status === 'expired' || data.status === 'invalid_or_expired') {
+            clearInterval(zee5PollTimer);
+            if (zee5CountdownTimer) clearInterval(zee5CountdownTimer);
+            const timerEl = document.getElementById('zee5TimerText');
+            if (timerEl) timerEl.innerText = 'Code expired. Click Refresh to get a new code.';
+          }
+        } catch (_err) {}
+      }, 3000);
+    }
+
+    window.toggleDirectAdminLogin = function(showLogin) {
+      const pairCard = document.getElementById('stepZee5PairCard');
+      const authCard = document.getElementById('step2AuthCard');
+      const stepText = document.getElementById('stepIndicatorText');
+      if (showLogin) {
+        if (pairCard) pairCard.style.display = 'none';
+        if (authCard) authCard.style.display = 'block';
+        if (stepText) stepText.innerText = 'Admin Sign In';
+        const em = document.getElementById('authEmailInput');
+        if (em) em.focus();
+      } else {
+        if (pairCard) pairCard.style.display = 'block';
+        if (authCard) authCard.style.display = 'none';
+        if (stepText) stepText.innerText = 'Device Activation: Pair with Admin Console';
+      }
+    };
+
+    // =========================================================================
+    // MODAL DIALOGS FOR DEVICE PAIRING & MANAGEMENT
+    // =========================================================================
+    window.openPairDeviceModal = function() {
+      const modal = document.getElementById('modalPairDevice');
+      if (modal) {
+        modal.classList.add('active');
+        const codeInput = document.getElementById('inputPairDeviceCode');
+        if (codeInput) {
+          codeInput.value = '';
+          codeInput.focus();
+        }
+        loadGodownsIntoSelect('selectPairDeviceGodown');
+      }
+    };
+
+    window.closePairDeviceModal = function() {
+      const modal = document.getElementById('modalPairDevice');
+      if (modal) modal.classList.remove('active');
+    };
+
+    window.submitApproveDeviceCode = async function() {
+      const codeInput = document.getElementById('inputPairDeviceCode');
+      const nameInput = document.getElementById('inputPairDeviceName');
+      const godownSelect = document.getElementById('selectPairDeviceGodown');
+      const btn = document.getElementById('btnApprovePairDevice');
+
+      const code = (codeInput?.value || '').trim();
+      const deviceName = (nameInput?.value || '').trim() || 'Store Terminal';
+      const godown = (godownSelect?.value || 'Online_saree').trim();
+
+      if (!code) {
+        alert('Please enter the 6-character activation code shown on the store terminal PC.');
+        return;
+      }
+
+      if (btn) { btn.disabled = true; btn.innerText = 'Authorizing & Locking...'; }
+
+      try {
+        const res = await fetch('/api/auth/approve-device-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, deviceName, godown })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Failed to approve device');
+
+        alert(`Success! Terminal "${deviceName}" has been paired and permanently locked to Godown: "${godown}". The screen on the store PC will unlock automatically!`);
+        closePairDeviceModal();
+      } catch (err) {
+        alert('Pairing error: ' + err.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerText = 'Authorize & Lock Terminal'; }
+      }
+    };
+
+    window.openConnectedDevicesModal = function() {
+      const modal = document.getElementById('modalConnectedDevices');
+      if (modal) {
+        modal.classList.add('active');
+        loadConnectedDevicesList();
+      }
+    };
+
+    window.closeConnectedDevicesModal = function() {
+      const modal = document.getElementById('modalConnectedDevices');
+      if (modal) modal.classList.remove('active');
+    };
+
+    async function loadConnectedDevicesList() {
+      const container = document.getElementById('connectedDevicesListContainer');
+      const emailBadge = document.getElementById('currentAdminEmailBadge');
+      if (container) container.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">Loading devices...</div>';
+
+      try {
+        const res = await fetch('/api/admin/devices');
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+
+        if (emailBadge) {
+          emailBadge.innerText = (data.currentUserEmail || 'admin') + (data.isMasterAdmin ? ' (Master Admin - Full Control)' : ' (Member - Read Only)');
+        }
+
+        const devices = data.devices || [];
+        if (devices.length === 0) {
+          container.innerHTML = '<div style="text-align:center; padding:24px; color:#94a3b8; font-size:13px;">No paired terminals found. Click "Pair PC" to authorize a new store terminal.</div>';
+          return;
+        }
+
+        const isMaster = Boolean(data.isMasterAdmin);
+
+        let html = '';
+        devices.forEach(d => {
+          const isRevoked = d.status === 'revoked';
+          const statusBadge = isRevoked
+            ? '<span style="color:#ef4444; font-size:11px; font-weight:700;">● Revoked</span>'
+            : '<span style="color:#10b981; font-size:11px; font-weight:700;">● Active (Locked)</span>';
+
+          const actionButtons = isMaster && !isRevoked
+            ? `<div style="display:flex; gap:6px;">
+                 <button class="btn btn-outline" style="font-size:11px; padding:3px 8px; height:28px;" onclick="promptReassignDevice('${d.id}', '${d.godown}', '${encodeURIComponent(d.deviceName)}')">🔄 Reassign</button>
+                 <button class="btn btn-outline" style="font-size:11px; padding:3px 8px; height:28px; color:#f87171; border-color:rgba(239,68,68,0.3);" onclick="confirmUnpairDevice('${d.id}', '${encodeURIComponent(d.deviceName)}')">🚫 Unpair</button>
+               </div>`
+            : (!isMaster ? `<span style="font-size:10.5px; color:#64748b; font-style:italic;">Master Admin Only</span>` : '');
+
+          html += `
+            <div class="device-row-item">
+              <div>
+                <div style="font-size:13.5px; font-weight:700; color:#ffffff; display:flex; align-items:center; gap:8px;">
+                  <span>💻 ${d.deviceName}</span>
+                  ${statusBadge}
+                </div>
+                <div style="font-size:11.5px; color:#94a3b8; margin-top:3px;">
+                  Locked Godown: <strong style="color:#38bdf8;">${d.godown}</strong> | Paired: ${new Date(d.pairedAt).toLocaleDateString()} by ${d.pairedBy || 'Admin'}
+                </div>
+              </div>
+              <div>${actionButtons}</div>
+            </div>
+          `;
+        });
+
+        container.innerHTML = html;
+      } catch (err) {
+        if (container) container.innerHTML = `<div style="color:#f87171; padding:16px;">Failed to load devices: ${err.message}</div>`;
+      }
+    }
+
+    window.confirmUnpairDevice = async function(deviceId, encName) {
+      const name = decodeURIComponent(encName);
+      if (!confirm(`Are you sure you want to UNPAIR and REVOKE terminal "${name}"?\n\nThis terminal will lose access immediately and will need to be re-paired with a new 6-character code.`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/admin/devices/${deviceId}/unpair`, { method: 'POST' });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        alert(data.message || 'Device revoked successfully.');
+        loadConnectedDevicesList();
+      } catch (err) {
+        alert('Unpair error: ' + err.message);
+      }
+    };
+
+    window.promptReassignDevice = async function(deviceId, curGodown, encName) {
+      const name = decodeURIComponent(encName);
+      const newGodown = prompt(`Enter new Godown storage for terminal "${name}" (Current: ${curGodown}):`, curGodown);
+      if (!newGodown || newGodown.trim() === '' || newGodown.trim() === curGodown) return;
+
+      try {
+        const res = await fetch(`/api/admin/devices/${deviceId}/reassign`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newGodown: newGodown.trim() })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        alert(`Terminal "${name}" reassigned and locked to "${data.newGodown}".`);
+        loadConnectedDevicesList();
+      } catch (err) {
+        alert('Reassign error: ' + err.message);
+      }
+    };
+
+    async function loadGodownsIntoSelect(selectId) {
+      const sel = document.getElementById(selectId);
+      if (!sel) return;
+      try {
+        const res = await fetch('/api/admin/godowns/list');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.godowns)) {
+          sel.innerHTML = data.godowns.map(g => `<option value="${g.name}">📦 ${g.name}</option>`).join('');
+        }
+      } catch (_) {}
+    }
+
+    window.handleSwitchStore = function() {
+      if (window.isDeviceLocked) {
+        alert(`Hardware Lock Active: This PC terminal is locked to Godown "${window.lockedGodown || 'Assigned'}". Only Master Admin can reassign it.`);
+        return;
+      }
+      if (typeof window.openGodownSetupModal === 'function') {
+        window.openGodownSetupModal();
+      } else {
+        const modal = document.getElementById('modalGodownSetup');
+        if (modal) modal.classList.add('active');
+      }
+    };
+
+    window.handlePasswordSubmit = async function(e) {
+      e.preventDefault();
+      if (!supabaseClient) {
+        showAuthError('Connecting to Supabase Cloud Auth. Please try again in 2 seconds.');
+        return;
+      }
+      const email = document.getElementById('authEmailInput').value.trim();
+      const password = document.getElementById('authPasswordInput').value;
+      const btn = document.getElementById('btnSubmitPassword');
+      const errBox = document.getElementById('authErrorMessage');
+      if (errBox) errBox.style.display = 'none';
+      if (btn) { btn.disabled = true; btn.innerText = 'Verifying with Supabase...'; }
+
+      try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) {
+          if (errBox) {
+            errBox.innerText = error.message;
+            errBox.style.display = 'block';
+          }
+        } else if (data && data.session) {
+          window.supabaseToken = data.session.access_token;
+          setAuthCookie(data.session.access_token);
+          revealDashboard(data.user, 'supabase');
+        }
+      } catch (err) {
+        if (errBox) {
+          errBox.innerText = 'Sign-in failed: ' + err.message;
+          errBox.style.display = 'block';
+        }
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerText = 'Sign In & Unlock Console'; }
+      }
+    };
+
+    window.handleSupabaseSignOut = async function() {
+      if (confirm('Are you sure you want to sign out of Sai Traders Operations?')) {
+        if (supabaseClient) {
+          try { await supabaseClient.auth.signOut(); } catch (_) {}
+        }
+        localStorage.removeItem('sai_device_token');
+        await fetch('/api/admin/logout', { method: 'POST' }).catch(() => {});
+        hideDashboardAndRequireAuth();
+      }
+    };
+
+    function showAuthError(msg) {
+      const errBox = document.getElementById('authErrorMessage');
+      if (errBox) {
+        errBox.innerText = msg;
+        errBox.style.display = 'block';
+      }
+    }
+
+    async function initSupabaseAndCheckSession() {
+      // 1. First check if device token is stored
+      const existingToken = localStorage.getItem('sai_device_token');
+      if (existingToken) {
+        try {
+          const dRes = await fetch('/api/auth/device-session', {
+            headers: { 'x-device-token': existingToken }
+          });
+          const dData = await dRes.json();
+          if (dData.success && dData.device && dData.device.status === 'active') {
+            window.isDeviceLocked = true;
+            window.lockedGodown = dData.device.godown;
+            window.deviceName = dData.device.deviceName;
+            localStorage.setItem('sai_active_store', JSON.stringify({
+              name: dData.device.deviceName,
+              godown: dData.device.godown,
+              locked: true
+            }));
+            revealDashboard({ id: dData.device.id, email: dData.device.deviceName }, 'device');
+            return;
+          } else {
+            localStorage.removeItem('sai_device_token');
+          }
+        } catch (_devErr) {}
+      }
+
+      // 2. Second check Supabase user session
+      try {
+        const res = await fetch('/api/auth/supabase-config');
+        const config = await res.json();
+        const { supabaseUrl, supabaseAnonKey } = config;
+
+        if (supabaseUrl && supabaseAnonKey && typeof window.supabase !== 'undefined') {
+          supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+          const { data: { session } } = await supabaseClient.auth.getSession();
+          if (session && session.user) {
+            window.supabaseToken = session.access_token;
+            setAuthCookie(session.access_token);
+            revealDashboard(session.user, 'supabase');
+            return;
+          }
+
+          supabaseClient.auth.onAuthStateChange((event, session) => {
+            if (session && session.user) {
+              window.supabaseToken = session.access_token;
+              setAuthCookie(session.access_token);
+              revealDashboard(session.user, 'supabase');
+            } else if (event === 'SIGNED_OUT') {
+              hideDashboardAndRequireAuth();
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[Auth] Supabase check notice:', err);
+      }
+
+      // 3. No active device or admin session -> show Zee5 pairing screen
+      hideDashboardAndRequireAuth();
+    }
+
+    initSupabaseAndCheckSession();
+  </script>
+  <script src="app-v2.js?v=20261104_security_v5"></script>
+</body>
+</html>
+

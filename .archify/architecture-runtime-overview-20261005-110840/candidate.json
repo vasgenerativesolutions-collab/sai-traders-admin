@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Sai Traders — WhatsApp Commerce & Tally ERP Architecture",
+    "output": ".archify/architecture-runtime-overview-20261005-110840/runtime-overview.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "customer",
+      "type": "external",
+      "label": "Customer",
+      "sublabel": "WhatsApp Mobile / Web",
+      "tag": "End User Entrypoint",
+      "pos": [40, 220],
+      "size": [130, 64]
+    },
+    {
+      "id": "meta_wa",
+      "type": "external",
+      "label": "WhatsApp Cloud API",
+      "sublabel": "Meta Webhooks & Media",
+      "tag": "HMAC-SHA256 Auth",
+      "pos": [310, 220],
+      "size": [150, 64]
+    },
+    {
+      "id": "gemini_vision",
+      "type": "cloud",
+      "label": "Gemini 2.5 Flash",
+      "sublabel": "Vision Attribute Extractor",
+      "tag": "Fabric, Weave & Motifs",
+      "pos": [600, 60],
+      "size": [160, 64]
+    },
+    {
+      "id": "gemini_emb",
+      "type": "cloud",
+      "label": "Gemini Embeddings",
+      "sublabel": "text-embedding-004",
+      "tag": "768-d Vector Model",
+      "pos": [910, 60],
+      "size": [160, 64]
+    },
+    {
+      "id": "wa_webhook",
+      "type": "backend",
+      "label": "Webhook Gateway",
+      "sublabel": "Supabase Edge Function",
+      "tag": "Deno 1.x / TypeScript",
+      "pos": [600, 220],
+      "size": [160, 64]
+    },
+    {
+      "id": "postgres_pgvector",
+      "type": "database",
+      "label": "PostgreSQL + pgvector",
+      "sublabel": "Supabase Database",
+      "tag": "Cosine Distance :768",
+      "pos": [910, 220],
+      "size": [160, 64]
+    },
+    {
+      "id": "supabase_storage",
+      "type": "cloud",
+      "label": "Supabase Storage",
+      "sublabel": "saree-catalog-images",
+      "tag": "Public Media Bucket",
+      "pos": [600, 370],
+      "size": [160, 64]
+    },
+    {
+      "id": "admin_portal",
+      "type": "frontend",
+      "label": "Admin Dashboard",
+      "sublabel": "Express.js Server :3000",
+      "tag": "Catalog & Health UI",
+      "pos": [600, 520],
+      "size": [160, 64]
+    },
+    {
+      "id": "tally_agent",
+      "type": "backend",
+      "label": "Autonomous Tally Agent",
+      "sublabel": "Local Node.js Daemon",
+      "tag": "3s Order Polling",
+      "pos": [910, 520],
+      "size": [160, 64]
+    },
+    {
+      "id": "tally_prime",
+      "type": "external",
+      "label": "TallyPrime ERP",
+      "sublabel": "Desktop XML Server :9000",
+      "tag": "Authoritative Inventory",
+      "pos": [1230, 520],
+      "size": [160, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Supabase Cloud Managed Services",
+      "wraps": ["wa_webhook", "postgres_pgvector", "supabase_storage"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Sai Traders On-Premise Store Network (Localhost / LAN)",
+      "wraps": ["admin_portal", "tally_agent", "tally_prime"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "customer-to-meta",
+      "from": "customer",
+      "to": "meta_wa",
+      "label": "1. Saree screenshot",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "meta-to-webhook",
+      "from": "meta_wa",
+      "to": "wa_webhook",
+      "label": "2. Inbound webhook",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "webhook-to-vision",
+      "from": "wa_webhook",
+      "to": "gemini_vision",
+      "label": "3. Extract attributes",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "vision-to-emb",
+      "from": "gemini_vision",
+      "to": "gemini_emb",
+      "label": "4. Visual description",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "emb-to-db",
+      "from": "gemini_emb",
+      "to": "postgres_pgvector",
+      "label": "5. 768-d similarity search",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "db-to-tally",
+      "from": "postgres_pgvector",
+      "to": "tally_agent",
+      "label": "6. Order sync queue",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "tally-to-prime",
+      "from": "tally_agent",
+      "to": "tally_prime",
+      "label": "7. XML Sales Voucher :9000",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "admin-to-storage",
+      "from": "admin_portal",
+      "to": "supabase_storage",
+      "label": "Upload photos",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "admin-to-agent",
+      "from": "admin_portal",
+      "to": "tally_agent",
+      "label": "Heartbeat & telemetry",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "storage-to-webhook",
+      "from": "supabase_storage",
+      "to": "wa_webhook",
+      "label": "Catalog media URLs",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Primary Runtime Path: Visual Search & Order",
+      "items": [
+        "1. Customer sends saree screenshot from Instagram or Pinterest via WhatsApp",
+        "2. Meta Cloud API delivers webhook payload with HMAC-SHA256 signature verification",
+        "3. Gemini 2.5 Flash analyzes fabric, weave style, motifs, border, and price estimate",
+        "4. Gemini embedding-2 model encodes visual attributes into 768-dimensional vector",
+        "5. Supabase pgvector performs cosine distance match against saree_catalog (match_sarees RPC)",
+        "6. WhatsApp sends interactive carousel cards; customer confirms order number (e.g. SAI-1001)",
+        "7. Autonomous Tally Agent syncs order and commits XML Sales Voucher to TallyPrime ERP"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Inventory & ERP Synchronization",
+      "items": [
+        "Local Node.js daemon polls Supabase orders table on a 3-second cycle",
+        "Constructs Tally XML envelope targeting Stock Summary & Sales Vouchers on port 9000",
+        "Immediate inventory deduction in TallyPrime prevents overselling high-demand sarees",
+        "Bidirectional reconciliation: changes in Tally stock balance automatically reflect in bot"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Store Operations & Administration",
+      "items": [
+        "Local Express dashboard (:3000) provides real-time latency and sync health metrics",
+        "Catalog management allows store staff to upload missing photos and edit prices",
+        "Direct multipart upload to Supabase Storage public bucket saree-catalog-images",
+        "Background batch embedding scripts regenerate vectors on catalog updates"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Trust Boundaries & Security Architecture",
+      "items": [
+        "Public Webhook perimeter protected by Meta X-Hub-Signature-256 HMAC verification",
+        "Supabase Edge Functions operate with strict Service Role JWT token authorization",
+        "Private Store LAN perimeter isolates TallyPrime ERP HTTP server from internet exposure",
+        "Customer session state and conversational memories isolated per customer phone number"
+      ]
+    }
+  ]
+}

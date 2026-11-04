@@ -1,0 +1,28 @@
+{
+  // Tokens come from the shell environment, not this file. See .env.example.
+  "servers": {
+    "supabase": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--project-ref=aisttddxrbizoshtpdxi"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "${env:SUPABASE_ACCESS_TOKEN}"
+      }
+    },
+    "cloudflare": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@cloudflare/mcp-server-cloudflare@latest"],
+      "env": {
+        "CLOUDFLARE_API_TOKEN": "${env:CLOUDFLARE_API_TOKEN}",
+        "CLOUDFLARE_ACCOUNT_ID": "${env:CLOUDFLARE_ACCOUNT_ID}"
+      }
+    }
+    // Fallback if the local cloudflare package misbehaves (OAuth, no token needed):
+    // "cloudflare-bindings": { "type": "sse", "url": "https://bindings.mcp.cloudflare.com/sse" }
+  }
+}

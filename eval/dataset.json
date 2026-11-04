@@ -1,0 +1,372 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-10-05T12:00:00Z",
+  "metadata": {
+    "total_samples": 45,
+    "positive_samples": 30,
+    "negative_samples": 15,
+    "description": "Benchmark evaluation dataset for gemini-embedding-2 multimodal vector similarity and low-confidence rejection testing on Sai Traders catalog."
+  },
+  "samples": [
+    {
+      "id": "POS-001",
+      "type": "positive",
+      "query": "bridal red kanjivaram pure silk saree with heavy gold zari temple border",
+      "target_part_number": "SAI-KANJ-01",
+      "category": "bridal",
+      "notes": "Direct keyword match for Crimson Regal Kanjivaram"
+    },
+    {
+      "id": "POS-002",
+      "type": "positive",
+      "query": "crimson south indian wedding saree rich pallu",
+      "target_part_number": "SAI-KANJ-01",
+      "category": "bridal",
+      "notes": "Semantic wedding query for Kanjivaram"
+    },
+    {
+      "id": "POS-003",
+      "type": "positive",
+      "query": "deep red silk saree with authentic gold border for muhurtham",
+      "target_part_number": "SAI-KANJ-01",
+      "category": "bridal",
+      "notes": "Muhurtham traditional occasion query"
+    },
+    {
+      "id": "POS-004",
+      "type": "positive",
+      "query": "royal sapphire banarasi katan silk saree floral jaal",
+      "target_part_number": "SAI-BAN-02",
+      "category": "silk",
+      "notes": "Exact match for Royal Sapphire Banarasi"
+    },
+    {
+      "id": "POS-005",
+      "type": "positive",
+      "query": "blue banarasi silk saree rich zari work for evening reception",
+      "target_part_number": "SAI-BAN-02",
+      "category": "silk",
+      "notes": "Evening reception banarasi query"
+    },
+    {
+      "id": "POS-006",
+      "type": "positive",
+      "query": "heavy bridal banarasi saree in deep blue color",
+      "target_part_number": "SAI-BAN-02",
+      "category": "silk",
+      "notes": "Deep blue bridal banarasi query"
+    },
+    {
+      "id": "POS-007",
+      "type": "positive",
+      "query": "pastel mint whisper chanderi silk cotton saree",
+      "target_part_number": "SAI-CHAN-04",
+      "category": "lightweight",
+      "notes": "Exact title match for Chanderi"
+    },
+    {
+      "id": "POS-008",
+      "type": "positive",
+      "query": "light green chanderi saree breathable fabric for summer day event",
+      "target_part_number": "SAI-CHAN-04",
+      "category": "lightweight",
+      "notes": "Natural language daytime chanderi request"
+    },
+    {
+      "id": "POS-009",
+      "type": "positive",
+      "query": "mint pastel comfortable cotton silk festive wear",
+      "target_part_number": "SAI-CHAN-04",
+      "category": "lightweight",
+      "notes": "Descriptive color and fabric combo"
+    },
+    {
+      "id": "POS-010",
+      "type": "positive",
+      "query": "blush rose handpainted organza silk saree delicate florals",
+      "target_part_number": "SAI-ORG-05",
+      "category": "organza",
+      "notes": "Organza catalog exact match"
+    },
+    {
+      "id": "POS-011",
+      "type": "positive",
+      "query": "pink sheer organza floral printed party wear saree",
+      "target_part_number": "SAI-ORG-05",
+      "category": "organza",
+      "notes": "Party wear pink organza request"
+    },
+    {
+      "id": "POS-012",
+      "type": "positive",
+      "query": "lightweight pastel pink saree with hand painted floral motifs",
+      "target_part_number": "SAI-ORG-05",
+      "category": "organza",
+      "notes": "Handpainted motif query"
+    },
+    {
+      "id": "POS-013",
+      "type": "positive",
+      "query": "marigold yellow bandhani georgette saree traditional gota patti",
+      "target_part_number": "SAI-BAN-03",
+      "category": "bandhani",
+      "notes": "Exact match for yellow bandhani georgette"
+    },
+    {
+      "id": "POS-014",
+      "type": "positive",
+      "query": "bright yellow saree for haldi ceremony traditional rajasthani tie dye",
+      "target_part_number": "SAI-BAN-03",
+      "category": "bandhani",
+      "notes": "Haldi ceremony specific query"
+    },
+    {
+      "id": "POS-015",
+      "type": "positive",
+      "query": "georgette bandhej saree mustard yellow festival wear",
+      "target_part_number": "SAI-BAN-03",
+      "category": "bandhani",
+      "notes": "Bandhej festival query"
+    },
+    {
+      "id": "POS-016",
+      "type": "positive",
+      "query": "heritage double ikat patola silk saree geometric weaving",
+      "target_part_number": "SAI-PAT-06",
+      "category": "heritage",
+      "notes": "Exact match for double ikat patola"
+    },
+    {
+      "id": "POS-017",
+      "type": "positive",
+      "query": "gujarat patola pure silk saree authentic handloom heirloom",
+      "target_part_number": "SAI-PAT-06",
+      "category": "heritage",
+      "notes": "Heirloom patola customer inquiry"
+    },
+    {
+      "id": "POS-018",
+      "type": "positive",
+      "query": "traditional ikat saree with elephant and parrot motifs",
+      "target_part_number": "SAI-PAT-06",
+      "category": "heritage",
+      "notes": "Double ikat motif description"
+    },
+    {
+      "id": "POS-019",
+      "type": "positive",
+      "query": "canary red bandhani zari woven silk saree bridal rajasthani",
+      "target_part_number": "SAI-BAN-RED-07",
+      "category": "bandhani",
+      "notes": "Red bandhani silk match"
+    },
+    {
+      "id": "POS-020",
+      "type": "positive",
+      "query": "red bridal bandhani saree with heavy zari border for pooja",
+      "target_part_number": "SAI-BAN-RED-07",
+      "category": "bandhani",
+      "notes": "Red bandhani bridal query"
+    },
+    {
+      "id": "POS-021",
+      "type": "positive",
+      "query": "prussian blue bandhani gaji satin silk saree contrast border",
+      "target_part_number": "SAI-GAJI-BLU-08",
+      "category": "satin_gaji",
+      "notes": "Gaji silk exact match"
+    },
+    {
+      "id": "POS-022",
+      "type": "positive",
+      "query": "dark blue heavy gaji silk saree glossy finish lagan celebration",
+      "target_part_number": "SAI-GAJI-BLU-08",
+      "category": "satin_gaji",
+      "notes": "Gaji satin finish customer description"
+    },
+    {
+      "id": "POS-023",
+      "type": "positive",
+      "query": "women art silk dark blue with sky blue contrast border saree",
+      "target_part_number": "SAI-ART-BLU-157",
+      "category": "art_silk",
+      "notes": "Art silk daily/office wear match"
+    },
+    {
+      "id": "POS-024",
+      "type": "positive",
+      "query": "budget dark blue art silk saree dual tone border under 2000",
+      "target_part_number": "SAI-ART-BLU-157",
+      "category": "art_silk",
+      "notes": "Price sensitive art silk inquiry"
+    },
+    {
+      "id": "POS-025",
+      "type": "positive",
+      "query": "royal blue soft silk saree with antique zari elephant border",
+      "target_part_number": "SR-1042-R",
+      "category": "soft_silk",
+      "notes": "Exact match for SR-1042-R soft silk"
+    },
+    {
+      "id": "POS-026",
+      "type": "positive",
+      "query": "SR-1042-R royal blue saree antique elephant design",
+      "target_part_number": "SR-1042-R",
+      "category": "soft_silk",
+      "notes": "SKU specific query from customer video screenshot"
+    },
+    {
+      "id": "POS-027",
+      "type": "positive",
+      "query": "soft silk royal blue wedding guest saree lightweight feel",
+      "target_part_number": "SR-1042-R",
+      "category": "soft_silk",
+      "notes": "Comfortable soft silk query"
+    },
+    {
+      "id": "POS-028",
+      "type": "positive",
+      "query": "antique zari border rich royal blue pallu saree",
+      "target_part_number": "SR-1042-R",
+      "category": "soft_silk",
+      "notes": "Zari and pallu focused query"
+    },
+    {
+      "id": "POS-029",
+      "type": "positive",
+      "query": "silk saree with ornate elephant figures in weaving",
+      "target_part_number": "SR-1042-R",
+      "category": "soft_silk",
+      "notes": "Figurative animal motif search"
+    },
+    {
+      "id": "POS-030",
+      "type": "positive",
+      "query": "kanjivaram pure silk wedding saree authentic zari",
+      "target_part_number": "SAI-KANJ-01",
+      "category": "bridal",
+      "notes": "General bridal kanjivaram"
+    },
+    {
+      "id": "NEG-001",
+      "type": "negative",
+      "query": "heavy velvet embroidered bridal lehenga choli with flared cancan",
+      "target_part_number": null,
+      "category": "out_of_catalog_lehenga",
+      "notes": "Lehenga choli query - should not falsely match any saree"
+    },
+    {
+      "id": "NEG-002",
+      "type": "negative",
+      "query": "western evening ball gown sleeveless with sequins cocktail dress",
+      "target_part_number": null,
+      "category": "out_of_catalog_western",
+      "notes": "Western gown"
+    },
+    {
+      "id": "NEG-003",
+      "type": "negative",
+      "query": "men tailored cotton kurta pyjama set with nehru jacket",
+      "target_part_number": null,
+      "category": "out_of_catalog_menswear",
+      "notes": "Menswear ethnic"
+    },
+    {
+      "id": "NEG-004",
+      "type": "negative",
+      "query": "denim jacket oversized blue with metal buttons casual outerwear",
+      "target_part_number": null,
+      "category": "out_of_catalog_western",
+      "notes": "Denim jacket"
+    },
+    {
+      "id": "NEG-005",
+      "type": "negative",
+      "query": "readymade anarkali suit salwar kameez with heavy dupatta",
+      "target_part_number": null,
+      "category": "out_of_catalog_salwar",
+      "notes": "Salwar suit"
+    },
+    {
+      "id": "NEG-006",
+      "type": "negative",
+      "query": "gold plated kundan necklace jewellery set with earrings",
+      "target_part_number": null,
+      "category": "out_of_catalog_jewellery",
+      "notes": "Jewellery item"
+    },
+    {
+      "id": "NEG-007",
+      "type": "negative",
+      "query": "kids festive lehenga dress for 5 year old girl birthday",
+      "target_part_number": null,
+      "category": "out_of_catalog_kids",
+      "notes": "Kids wear"
+    },
+    {
+      "id": "NEG-008",
+      "type": "negative",
+      "query": "leather bridal stiletto sandals high heels pointed toe",
+      "target_part_number": null,
+      "category": "out_of_catalog_footwear",
+      "notes": "Footwear"
+    },
+    {
+      "id": "NEG-009",
+      "type": "negative",
+      "query": "floral chiffon summer mini skirt high waist a-line",
+      "target_part_number": null,
+      "category": "out_of_catalog_western",
+      "notes": "Western skirt"
+    },
+    {
+      "id": "NEG-010",
+      "type": "negative",
+      "query": "embroidered clutch bag bridal potli purse for wedding",
+      "target_part_number": null,
+      "category": "out_of_catalog_accessories",
+      "notes": "Potli purse"
+    },
+    {
+      "id": "NEG-011",
+      "type": "negative",
+      "query": "black wool winter trench coat double breasted formal",
+      "target_part_number": null,
+      "category": "out_of_catalog_western",
+      "notes": "Winter coat"
+    },
+    {
+      "id": "NEG-012",
+      "type": "negative",
+      "query": "casual cotton graphic print round neck t-shirt white",
+      "target_part_number": null,
+      "category": "out_of_catalog_western",
+      "notes": "Casual t-shirt"
+    },
+    {
+      "id": "NEG-013",
+      "type": "negative",
+      "query": "pure pashmina kashmiri shawl with hand sozni needlework",
+      "target_part_number": null,
+      "category": "out_of_catalog_shawl",
+      "notes": "Shawl out of saree category"
+    },
+    {
+      "id": "NEG-014",
+      "type": "negative",
+      "query": "cotton bedsheet king size with pillow covers 300 tc",
+      "target_part_number": null,
+      "category": "out_of_catalog_home",
+      "notes": "Home furnishing"
+    },
+    {
+      "id": "NEG-015",
+      "type": "negative",
+      "query": "unstitched printed cotton dress material 3 piece",
+      "target_part_number": null,
+      "category": "out_of_catalog_dress_material",
+      "notes": "Dress material"
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sai Traders — Storefront API Interactive Simulator</title>
+  
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Top Application Header -->
+  <header class="app-header">
+    <div class="brand-wrapper">
+      <div class="brand-logo">🥻</div>
+      <div class="brand-info">
+        <h1>Sai Traders Storefront Simulator</h1>
+        <p>Live REST API Testbed for External Angular / React Webstore</p>
+      </div>
+    </div>
+
+    <div class="header-status-group">
+      <div id="apiStatusPill" class="status-pill online">
+        <span class="pulse-dot"></span> API Online (200 OK)
+      </div>
+      <div id="godownPill" class="status-pill tally">
+        Godown: Sarees
+      </div>
+      <button id="configBtn" class="btn-icon" title="Change Base URL or API Key">
+        ⚙️ API Settings
+      </button>
+    </div>
+  </header>
+
+  <!-- Split Screen Layout -->
+  <main class="app-layout">
+    
+    <!-- Left: Storefront Preview Panel -->
+    <section class="storefront-panel">
+      <!-- Search & Controls Bar -->
+      <div class="controls-bar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="Search by name, fabric, or color..." />
+        </div>
+
+        <div class="filter-actions">
+          <label class="filter-toggle">
+            <input type="checkbox" id="inStockOnly" />
+            <span>In-Stock Only</span>
+          </label>
+
+          <button id="refreshBtn" class="btn-icon" title="Reload live catalog from API">
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Saree Cards Grid -->
+      <div id="productGrid" class="product-grid">
+        <!-- Dynamically populated by app.js -->
+      </div>
+    </section>
+
+    <!-- Right: Real-Time API Telemetry & Sync Inspector -->
+    <aside class="inspector-panel">
+      <div class="inspector-header">
+        <div class="inspector-title">
+          <span>📡</span>
+          <span>API Telemetry & Sync Inspector</span>
+        </div>
+        <button class="btn-icon" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="clearInspector()">
+          Clear
+        </button>
+      </div>
+
+      <!-- Quick One-Click Tests -->
+      <div class="quick-tests">
+        <button class="btn-test" onclick="testUnauthorized()">
+          🚫 Test 401 (No Key)
+        </button>
+        <button class="btn-test" onclick="testSingleSku('SAI-VAR-01')">
+          🔍 Lookup Base Group (SAI-VAR-01)
+        </button>
+        <button class="btn-test" onclick="testSingleSku('SAI-VAR-01-BLU')">
+          🔍 Lookup Variant (SAI-VAR-01-BLU)
+        </button>
+      </div>
+
+      <!-- Live Three-Way Sync Status Tracker -->
+      <div class="sync-tracker">
+        <div class="tracker-node">
+          <div class="tracker-label">DB Stock Pool</div>
+          <div id="trackDb" class="tracker-val">Ready</div>
+        </div>
+        <div class="tracker-node">
+          <div class="tracker-label">Tally ERP Godown</div>
+          <div id="trackTally" class="tracker-val">Sarees Active</div>
+        </div>
+        <div class="tracker-node">
+          <div class="tracker-label">Google Sheets</div>
+          <div id="trackSheets" class="tracker-val">Connected</div>
+        </div>
+      </div>
+
+      <!-- Live HTTP Request/Response Stream -->
+      <div id="inspectorBody" class="inspector-body">
+        <!-- Logs dynamically appended here -->
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- Simulated Purchase Checkout Modal -->
+  <div id="purchaseModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Simulate Web Checkout</div>
+        <button id="modalCloseBtn" class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Selected Saree Summary -->
+        <div class="modal-item-summary">
+          <div>
+            <div id="modalItemName" style="font-weight: 700; color: #fff;">Saree Name</div>
+            <div id="modalItemSku" style="font-size: 0.75rem; color: #9ca3af; font-family: monospace;">SKU: ---</div>
+          </div>
+          <div id="modalItemPrice" style="font-family: var(--font-heading); font-size: 1.35rem; font-weight: 700; color: #34d399;">₹0</div>
+        </div>
+
+        <!-- Customer Inputs -->
+        <div class="form-group">
+          <label>Order Number / ID</label>
+          <input type="text" id="orderIdInput" readonly />
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+          <div class="form-group">
+            <label>Customer Name</label>
+            <input type="text" id="custNameInput" value="Ananya Rao" />
+          </div>
+          <div class="form-group">
+            <label>Contact Phone</label>
+            <input type="text" id="custPhoneInput" value="+919876543210" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Delivery Address</label>
+          <input type="text" id="custAddressInput" value="#42, 100ft Road, Indiranagar, Bengaluru" />
+        </div>
+
+        <!-- Real-Time Background Synchronization Steps -->
+        <div class="sync-status-box">
+          <div id="syncStepDb" class="sync-step">
+            <span>⏳</span> 1. Deduct Stock in Database & Stock Pool
+          </div>
+          <div id="syncStepTally" class="sync-step">
+            <span>⏳</span> 2. Post Sales Voucher in Tally ERP (Sarees Godown)
+          </div>
+          <div id="syncStepSheets" class="sync-step">
+            <span>⏳</span> 3. Append Transaction to Google Spreadsheet
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="cancelOrderBtn" class="btn-secondary">Cancel</button>
+        <button id="confirmOrderBtn" class="btn-buy">Confirm & Send Webhook</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

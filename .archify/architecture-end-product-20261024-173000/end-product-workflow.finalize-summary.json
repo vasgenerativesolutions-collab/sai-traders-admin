@@ -1,0 +1,313 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "c:\\sai_traders\\.archify\\architecture-end-product-20261024-173000\\candidate.json",
+    "sha256": "8048060d6424d57b95dea45a2e9d6d9d183c755f8b08c7f68c31a7aaf765da5a",
+    "bytes": 10727
+  },
+  "artifact": {
+    "path": "c:\\sai_traders\\.archify\\architecture-end-product-20261024-173000\\end-product-workflow.html",
+    "sha256": "77272d70f60bfdaff18975104ffb6687ad567ce515def777db2292a14645c7a2",
+    "bytes": 795960
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\sai_traders\\.archify\\architecture-end-product-20261024-173000\\end-product-workflow.finalize.json",
+    "summaryReceipt": "C:\\sai_traders\\.archify\\architecture-end-product-20261024-173000\\end-product-workflow.finalize-summary.json",
+    "browserCheckReceipt": "c:\\sai_traders\\.archify\\architecture-end-product-20261024-173000\\end-product-workflow.browser-check.json"
+  },
+  "update": {
+    "status": "update_available",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.2.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.2.0",
+    "severity": "normal",
+    "checkedAt": "2026-10-27T09:48:21.510Z",
+    "source": "cache",
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.2.0. A previous check at 2026-10-27T09:48:21.510Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.2.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 2918,
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 8,
+      "routesOverSuggestedBends": 4,
+      "routesOverSuggestedStretch": 1
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "meta_to_engine",
+            "from": "meta_wa_api",
+            "to": "sai_wa_engine",
+            "label": "Inbound Webhook",
+            "collectionIndex": 1,
+            "artifactIndex": 2
+          },
+          "right": {
+            "id": "r2_to_angular",
+            "from": "cloudflare_r2",
+            "to": "vendor_angular",
+            "label": "Zero-Egress Stream",
+            "collectionIndex": 10,
+            "artifactIndex": 11
+          },
+          "point": [
+            391.22222222222223,
+            245
+          ]
+        },
+        {
+          "left": {
+            "id": "meta_to_engine",
+            "from": "meta_wa_api",
+            "to": "sai_wa_engine",
+            "label": "Inbound Webhook",
+            "collectionIndex": 1,
+            "artifactIndex": 2
+          },
+          "right": {
+            "id": "admin_to_mongo",
+            "from": "admin_console",
+            "to": "vendor_mongodb",
+            "label": "Feed Catalog &amp; CDN URLs",
+            "collectionIndex": 12,
+            "artifactIndex": 13
+          },
+          "point": [
+            857.8,
+            248
+          ]
+        },
+        {
+          "left": {
+            "id": "hold_mirrors_mongo",
+            "from": "stock_hold_lock",
+            "to": "vendor_mongodb",
+            "label": "Mirror reservedStock",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "right": {
+            "id": "express_to_webhook",
+            "from": "vendor_express",
+            "to": "storefront_webhook",
+            "label": "POST /storefront-sync",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "point": [
+            820,
+            443
+          ]
+        },
+        {
+          "left": {
+            "id": "hold_mirrors_mongo",
+            "from": "stock_hold_lock",
+            "to": "vendor_mongodb",
+            "label": "Mirror reservedStock",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "right": {
+            "id": "admin_to_mongo",
+            "from": "admin_console",
+            "to": "vendor_mongodb",
+            "label": "Feed Catalog &amp; CDN URLs",
+            "collectionIndex": 12,
+            "artifactIndex": 13
+          },
+          "point": [
+            857.8000000000001,
+            392
+          ],
+          "sharedNode": "vendor_mongodb"
+        },
+        {
+          "left": {
+            "id": "express_to_webhook",
+            "from": "vendor_express",
+            "to": "storefront_webhook",
+            "label": "POST /storefront-sync",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "right": {
+            "id": "admin_to_mongo",
+            "from": "admin_console",
+            "to": "vendor_mongodb",
+            "label": "Feed Catalog &amp; CDN URLs",
+            "collectionIndex": 12,
+            "artifactIndex": 13
+          },
+          "point": [
+            857.8000000000001,
+            443
+          ]
+        },
+        {
+          "left": {
+            "id": "r2_to_angular",
+            "from": "cloudflare_r2",
+            "to": "vendor_angular",
+            "label": "Zero-Egress Stream",
+            "collectionIndex": 10,
+            "artifactIndex": 11
+          },
+          "right": {
+            "id": "dispatch_to_customer",
+            "from": "physical_dispatch",
+            "to": "customer_wa",
+            "label": "Dispatch Tracking Alert",
+            "collectionIndex": 19,
+            "artifactIndex": 20
+          },
+          "point": [
+            675,
+            136
+          ]
+        },
+        {
+          "left": {
+            "id": "admin_to_ledger",
+            "from": "admin_console",
+            "to": "orders_ledger",
+            "label": "Master Catalog &amp; Price",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "right": {
+            "id": "dispatch_to_customer",
+            "from": "physical_dispatch",
+            "to": "customer_wa",
+            "label": "Dispatch Tracking Alert",
+            "collectionIndex": 19,
+            "artifactIndex": 20
+          },
+          "point": [
+            1120,
+            136
+          ]
+        },
+        {
+          "left": {
+            "id": "admin_to_mongo",
+            "from": "admin_console",
+            "to": "vendor_mongodb",
+            "label": "Feed Catalog &amp; CDN URLs",
+            "collectionIndex": 12,
+            "artifactIndex": 13
+          },
+          "right": {
+            "id": "dispatch_to_customer",
+            "from": "physical_dispatch",
+            "to": "customer_wa",
+            "label": "Dispatch Tracking Alert",
+            "collectionIndex": 19,
+            "artifactIndex": 20
+          },
+          "point": [
+            970,
+            136
+          ]
+        }
+      ],
+      "detours": [
+        {
+          "relationship": {
+            "id": "meta_to_engine",
+            "from": "meta_wa_api",
+            "to": "sai_wa_engine",
+            "label": "Inbound Webhook",
+            "collectionIndex": 1,
+            "artifactIndex": 2
+          },
+          "bends": 3,
+          "stretch": 1.063
+        },
+        {
+          "relationship": {
+            "id": "express_to_webhook",
+            "from": "vendor_express",
+            "to": "storefront_webhook",
+            "label": "POST /storefront-sync",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "bends": 4,
+          "stretch": 1.401,
+          "directCorridorBlockers": [
+            {
+              "id": "vendor_mongodb",
+              "label": "Storefront MongoDB",
+              "box": [
+                600,
+                500,
+                150,
+                64
+              ]
+            }
+          ]
+        },
+        {
+          "relationship": {
+            "id": "admin_to_mongo",
+            "from": "admin_console",
+            "to": "vendor_mongodb",
+            "label": "Feed Catalog &amp; CDN URLs",
+            "collectionIndex": 12,
+            "artifactIndex": 13
+          },
+          "bends": 3,
+          "stretch": 1
+        },
+        {
+          "relationship": {
+            "id": "webhook_to_ledger",
+            "from": "storefront_webhook",
+            "to": "orders_ledger",
+            "label": "Register Web Order",
+            "collectionIndex": 13,
+            "artifactIndex": 14
+          },
+          "bends": 4,
+          "stretch": 1
+        }
+      ],
+      "truncated": false
+    },
+    "hints": [
+      "meta_wa_api → sai_wa_engine crosses cloudflare_r2 → vendor_angular: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "meta_wa_api → sai_wa_engine crosses admin_console → vendor_mongodb: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "stock_hold_lock → vendor_mongodb crosses vendor_express → storefront_webhook: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "stock_hold_lock → vendor_mongodb and admin_console → vendor_mongodb cross next to vendor_mongodb: move node stock_hold_lock or admin_console so the two reach vendor_mongodb from different sides (for example one level with it, one directly above or below it).",
+      "vendor_express → storefront_webhook crosses admin_console → vendor_mongodb: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "cloudflare_r2 → vendor_angular crosses physical_dispatch → customer_wa: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "admin_console → orders_ledger crosses physical_dispatch → customer_wa: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "admin_console → vendor_mongodb crosses physical_dispatch → customer_wa: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

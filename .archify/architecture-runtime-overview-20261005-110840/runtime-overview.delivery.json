@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "22c7c3a0-c263-4d88-9e78-10a501ef9f1f",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\sai_traders\\.archify\\architecture-runtime-overview-20261005-110840\\candidate.json",
+  "output": "C:\\sai_traders\\.archify\\architecture-runtime-overview-20261005-110840\\runtime-overview.html",
+  "specification": {
+    "sha256": "c2008372b199aa3053d19bc5cbfc22b120b6e7027528771a0d64c2dbfa2337f1",
+    "bytes": 7415
+  },
+  "artifact": {
+    "sha256": "9ac26736366693884b036b4b17dd83b1299bb8191b26cdc3fa7cce1372c59e92",
+    "bytes": 770109
+  }
+}

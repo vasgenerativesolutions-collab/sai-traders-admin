@@ -1,0 +1,64 @@
+{
+  "name": "sai-traders-saree-bot",
+  "version": "1.0.0",
+  "description": "Sai Traders — WhatsApp Saree Intelligence Bot & TallyPrime Inventory Agent",
+  "main": "desktop/main.js",
+  "scripts": {
+    "admin": "node admin/server.js",
+    "agent": "node agent/index.js",
+    "desktop": "electron desktop/main.js",
+    "electron": "electron desktop/main.js",
+    "dist": "electron-builder --win nsis",
+    "test": "node scripts/test_tally_flow.js",
+    "check-env": "node scripts/test_env_and_services.js",
+    "add-tally-products": "node scripts/add_products_to_tally.js",
+    "reembed": "node scripts/reembed_catalog_v2.js",
+    "package:store": "node scripts/package_store_install.js",
+    "eval": "node eval/run_eval.js"
+  },
+  "build": {
+    "appId": "com.saitraders.bridge",
+    "productName": "Sai Traders Bridge",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sai Traders Bridge"
+    },
+    "files": [
+      "desktop/**/*",
+      "agent/**/*",
+      "admin/**/*",
+      "package.json"
+    ]
+  },
+  "keywords": [
+    "tally",
+    "whatsapp",
+    "gemini",
+    "supabase"
+  ],
+  "author": "Sai Traders",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "compression": "^1.8.2",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "docx": "^9.15.0",
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3",
+    "pg-mem": "^3.0.14"
+  }
+}

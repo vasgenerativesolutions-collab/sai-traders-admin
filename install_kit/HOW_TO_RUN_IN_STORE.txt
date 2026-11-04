@@ -1,0 +1,90 @@
+===============================================================================
+           SAI TRADERS — STORE PC & TERMINAL SETUP (ZEE5 PAIRING)
+===============================================================================
+
+This folder contains the dedicated in-store synchronization software for ANY 
+Store PC / Laptop terminal running TallyPrime.
+
+HOW TO START ON THIS LAPTOP / STORE PC:
+
+  [RECOMMENDED] Double-click "START_SAI_TRADERS.bat" (or "START_STORE_PC.bat")
+  - Starts the local Operations Core and Tally synchronization engine.
+  - Automatically opens the Sai Traders Console in your default web browser (http://localhost:3000).
+  - If setting up for the FIRST TIME on this PC, it immediately displays the
+    Zee5-style 6-Character Activation Code (e.g., [ S Q 7 ] — [ G B 2 ]).
+  - Simply enter this code on your Admin Console to pair this PC and permanently
+    lock it to your Godown storage!
+
+  [ALTERNATIVE] Desktop App Launcher ("START_BRIDGE_APP.bat")
+  - Launches the dedicated Windows Desktop App window on http://localhost:3000.
+
+-------------------------------------------------------------------------------
+1. PREREQUISITES ON THE STORE PC / LAPTOP:
+-------------------------------------------------------------------------------
+1. Windows 10 or 11 (64-bit).
+2. Node.js (v18, v20, or v22 LTS) installed from https://nodejs.org
+3. TallyPrime running with F12 XML Server enabled on Port 9000:
+   - In TallyPrime, press F1 (Help) -> Settings -> Connectivity.
+   - Client/Server Configuration:
+     • TallyPrime acts as : Both (or Server)
+     • Enable ODBC        : Yes
+     • Port               : 9000
+   - Restart TallyPrime if prompted.
+
+-------------------------------------------------------------------------------
+2. HOW TO PAIR THIS LAPTOP IN 3 STEPS:
+-------------------------------------------------------------------------------
+Step 1: Double-click 'START_SAI_TRADERS.bat'.
+        - Your browser opens http://localhost:3000.
+        - You will see the 6-character activation code (e.g., SQ7GB2).
+
+Step 2: On your Admin Phone or Admin Laptop:
+        - Log in to your Admin Console.
+        - Click [ 🔗 Pair PC ] in the top bar.
+        - Enter the 6-character code, name this terminal, and select the Godown.
+
+Step 3: The screen on this laptop automatically unlocks into the Dashboard!
+        - Hardware Godown Lock is permanently enabled.
+        - Staff can only view and bill stock belonging to this Godown.
+        - Walk-in counter sales sync with Tally ERP and Google Sheets.
+===============================================================================
+
+-------------------------------------------------------------------------------
+3. TESTING TALLY CONNECTION & VERIFICATION:
+-------------------------------------------------------------------------------
+- Double-click 'TEST_TALLY_CONNECTION.bat' to verify TallyPrime is open and responding on port 9000.
+- Ensure your company is loaded in Tally before starting the sync.
+
+-------------------------------------------------------------------------------
+4. PRODUCTION THREAT MITIGATIONS & ARCHITECTURE SAFEGUARDS:
+-------------------------------------------------------------------------------
+1. No Plaintext Credentials in .env:
+   - Credentials are authenticated against Supabase and encrypted on disk.
+
+2. Concurrency Spike Protection (TallyQueueManager):
+   - Strict Concurrency = 1 with a 250ms spacing buffer prevents TallyPrime's
+     single-threaded XML engine from freezing during flash sales.
+
+3. Idempotent Voucher Injection:
+   - Online sales vouchers use deterministic REMOTEID and VOUCHERKEY based on
+     order_number. Network retries will NEVER create duplicate sales invoices.
+
+4. Store PC Offline Resiliency:
+   - Web storefront orders continue 24/7 in Supabase Cloud. When the Store PC
+     reboots or reconnects, all pending paid orders sync automatically.
+
+5. Dedicated Online Saree Rack:
+   - Online stock is physically quarantined to a designated rack matching the
+     assigned godown to prevent walk-in counter sales of reserved items.
+
+-------------------------------------------------------------------------------
+5. HOW IT WORKS WITH YOUR ADMIN WEB PORTAL:
+-------------------------------------------------------------------------------
+The Web Admin Portal runs either locally or in the cloud:
+• Admin manages devices centrally from any phone or PC via [ 🖥️ Devices ].
+• Master Admin (admin@saitraders.com) can reassign Godowns or unpair terminals anytime.
+• Live indicators show:
+    🟢 TALLY: CONNECTED / READY
+    🟢 Connected Godown & Device Token Locked
+• Staff on the billing counter continue billing walk-in customers normally.
+===============================================================================

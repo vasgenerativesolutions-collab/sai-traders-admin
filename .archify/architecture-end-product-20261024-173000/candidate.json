@@ -1,0 +1,366 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Sai Traders — Unified Autonomous Commerce Architecture",
+    "subtitle": "Master Admin Operations, Cloudflare Media CDN, Unmodified Web Integration & Tally ERP Flow",
+    "output": ".archify/architecture-end-product-20261024-173000/end-product-workflow.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "customer_wa",
+      "type": "external",
+      "label": "WhatsApp Buyer",
+      "sublabel": "Natural Chat & Media",
+      "tag": "Mobile Channel",
+      "pos": [40, 160],
+      "size": [140, 64]
+    },
+    {
+      "id": "customer_web",
+      "type": "external",
+      "label": "Web Storefront Buyer",
+      "sublabel": "Catalog Browsing & Cart",
+      "tag": "Web Channel",
+      "pos": [40, 420],
+      "size": [140, 64]
+    },
+    {
+      "id": "meta_wa_api",
+      "type": "external",
+      "label": "Meta WhatsApp API",
+      "sublabel": "Direct Inbound Webhook",
+      "tag": "Cloud API v21.0",
+      "pos": [320, 160],
+      "size": [140, 64]
+    },
+    {
+      "id": "vendor_angular",
+      "type": "frontend",
+      "label": "Angular Storefront",
+      "sublabel": "Cart & Product Display",
+      "tag": "Unmodified Client",
+      "pos": [320, 360],
+      "size": [140, 64]
+    },
+    {
+      "id": "vendor_express",
+      "type": "backend",
+      "label": "Express API Server",
+      "sublabel": "Order Coordinator",
+      "tag": "Vendor API Server",
+      "pos": [320, 500],
+      "size": [140, 64]
+    },
+    {
+      "id": "cloudflare_r2",
+      "type": "cloud",
+      "label": "Cloudflare R2 Storage",
+      "sublabel": "10 GB Media CDN",
+      "tag": "Zero Egress S3 Bucket",
+      "pos": [600, 60],
+      "size": [150, 64]
+    },
+    {
+      "id": "vendor_razorpay",
+      "type": "security",
+      "label": "Razorpay Gateway",
+      "sublabel": "Payment Processing",
+      "tag": "Online Payment Capture",
+      "pos": [600, 360],
+      "size": [150, 64]
+    },
+    {
+      "id": "vendor_mongodb",
+      "type": "database",
+      "label": "Storefront MongoDB",
+      "sublabel": "Catalog & reservedStock",
+      "tag": "Storefront Cache",
+      "pos": [600, 500],
+      "size": [150, 64]
+    },
+    {
+      "id": "admin_console",
+      "type": "frontend",
+      "label": "Main Admin Console",
+      "sublabel": "Master Catalog & Media",
+      "tag": "Primary Control Center",
+      "pos": [890, 60],
+      "size": [160, 64]
+    },
+    {
+      "id": "sai_wa_engine",
+      "type": "backend",
+      "label": "Commerce Engine",
+      "sublabel": "Conversational Router",
+      "tag": "Operational Core",
+      "pos": [890, 200],
+      "size": [160, 64]
+    },
+    {
+      "id": "stock_hold_lock",
+      "type": "security",
+      "label": "Seat Hold Engine",
+      "sublabel": "Distributed Lock (10m TTL)",
+      "tag": "Zero Double-Booking",
+      "pos": [890, 360],
+      "size": [160, 64]
+    },
+    {
+      "id": "storefront_webhook",
+      "type": "backend",
+      "label": "Storefront Webhook",
+      "sublabel": "Paid Order Receiver",
+      "tag": "Integration Gateway",
+      "pos": [890, 500],
+      "size": [160, 64]
+    },
+    {
+      "id": "orders_ledger",
+      "type": "database",
+      "label": "Orders & Stock Pool",
+      "sublabel": "PostgreSQL Multi-Channel",
+      "tag": "Central Inventory Truth",
+      "pos": [1190, 200],
+      "size": [150, 64]
+    },
+    {
+      "id": "agent_jobs_queue",
+      "type": "messagebus",
+      "label": "Agent Jobs Buffer",
+      "sublabel": "Transactional Queue",
+      "tag": "Idempotent Voucher FIFO",
+      "pos": [1190, 360],
+      "size": [150, 64]
+    },
+    {
+      "id": "physical_dispatch",
+      "type": "backend",
+      "label": "Store Packaging",
+      "sublabel": "Tumakuru Fulfillment",
+      "tag": "Insured Courier Packing",
+      "pos": [1480, 200],
+      "size": [150, 64]
+    },
+    {
+      "id": "tally_agent",
+      "type": "backend",
+      "label": "Autonomous Tally Agent",
+      "sublabel": "Shop PC Daemon",
+      "tag": "Outbound HTTPS Poller",
+      "pos": [1480, 360],
+      "size": [150, 64]
+    },
+    {
+      "id": "tally_prime",
+      "type": "database",
+      "label": "TallyPrime ERP",
+      "sublabel": "Port 9000 XML Gateway",
+      "tag": "Official Accounting Ledger",
+      "pos": [1480, 500],
+      "size": [150, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "External Storefront Layer (Unmodified Existing Codebase)",
+      "wraps": ["vendor_angular", "vendor_express", "vendor_razorpay", "vendor_mongodb"]
+    },
+    {
+      "kind": "region",
+      "label": "Sai Traders Main Admin & Unified Operational Core",
+      "wraps": ["admin_console", "cloudflare_r2", "sai_wa_engine", "stock_hold_lock", "storefront_webhook", "orders_ledger", "agent_jobs_queue"]
+    },
+    {
+      "kind": "region",
+      "label": "Tumakuru Physical Store & On-Premises ERP",
+      "wraps": ["physical_dispatch", "tally_agent", "tally_prime"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "wa_to_meta",
+      "from": "customer_wa",
+      "to": "meta_wa_api",
+      "label": "WhatsApp Inbound",
+      "variant": "emphasis"
+    },
+    {
+      "id": "meta_to_engine",
+      "from": "meta_wa_api",
+      "to": "sai_wa_engine",
+      "label": "Inbound Webhook",
+      "variant": "emphasis"
+    },
+    {
+      "id": "engine_to_hold",
+      "from": "sai_wa_engine",
+      "to": "stock_hold_lock",
+      "label": "Seat Lock (10m TTL)",
+      "variant": "security"
+    },
+    {
+      "id": "web_to_angular",
+      "from": "customer_web",
+      "to": "vendor_angular",
+      "label": "Browse & Add to Cart",
+      "variant": "default"
+    },
+    {
+      "id": "angular_to_express",
+      "from": "vendor_angular",
+      "to": "vendor_express",
+      "label": "Checkout Request",
+      "variant": "default"
+    },
+    {
+      "id": "express_to_razorpay",
+      "from": "vendor_express",
+      "to": "vendor_razorpay",
+      "label": "Payment Intent",
+      "variant": "default"
+    },
+    {
+      "id": "express_to_mongo",
+      "from": "vendor_express",
+      "to": "vendor_mongodb",
+      "label": "Order & Hold Commit",
+      "variant": "default"
+    },
+    {
+      "id": "hold_mirrors_mongo",
+      "from": "stock_hold_lock",
+      "to": "vendor_mongodb",
+      "label": "Mirror reservedStock",
+      "variant": "security"
+    },
+    {
+      "id": "express_to_webhook",
+      "from": "vendor_express",
+      "to": "storefront_webhook",
+      "label": "POST /storefront-sync",
+      "variant": "emphasis"
+    },
+    {
+      "id": "admin_to_r2",
+      "from": "admin_console",
+      "to": "cloudflare_r2",
+      "label": "Upload Saree Media",
+      "variant": "default"
+    },
+    {
+      "id": "r2_to_angular",
+      "from": "cloudflare_r2",
+      "to": "vendor_angular",
+      "label": "Zero-Egress Stream",
+      "variant": "default"
+    },
+    {
+      "id": "admin_to_ledger",
+      "from": "admin_console",
+      "to": "orders_ledger",
+      "label": "Master Catalog & Price",
+      "variant": "emphasis"
+    },
+    {
+      "id": "admin_to_mongo",
+      "from": "admin_console",
+      "to": "vendor_mongodb",
+      "label": "Feed Catalog & CDN URLs",
+      "variant": "default"
+    },
+    {
+      "id": "webhook_to_ledger",
+      "from": "storefront_webhook",
+      "to": "orders_ledger",
+      "label": "Register Web Order",
+      "variant": "emphasis"
+    },
+    {
+      "id": "hold_to_ledger",
+      "from": "stock_hold_lock",
+      "to": "orders_ledger",
+      "label": "Atomic Stock Decrement",
+      "variant": "security"
+    },
+    {
+      "id": "ledger_to_jobs",
+      "from": "orders_ledger",
+      "to": "agent_jobs_queue",
+      "label": "Enqueue Voucher",
+      "variant": "emphasis"
+    },
+    {
+      "id": "agent_polls_jobs",
+      "from": "agent_jobs_queue",
+      "to": "tally_agent",
+      "label": "HTTPS Poll (:30s)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "agent_to_tally",
+      "from": "tally_agent",
+      "to": "tally_prime",
+      "label": "XML Sales Voucher",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ledger_to_dispatch",
+      "from": "orders_ledger",
+      "to": "physical_dispatch",
+      "label": "Packing Slip Alert",
+      "variant": "default"
+    },
+    {
+      "id": "dispatch_to_customer",
+      "from": "physical_dispatch",
+      "to": "customer_wa",
+      "label": "Dispatch Tracking Alert",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Main Admin & Cloudflare Media Distribution",
+      "items": [
+        "Sai Traders Main Admin manages master product catalog, pricing, and high-definition video reels",
+        "Media assets are hosted in Cloudflare R2 with zero-egress cost and globally accelerated edge delivery",
+        "Public CDN media links automatically populate MongoDB without changing web database schemas",
+        "Central inventory authority guarantees stock levels remain synchronized across all channels"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Unmodified External Storefront Integration",
+      "items": [
+        "External Angular and Express applications operate as an independent subsystem with zero code modifications",
+        "Product browsing, cart management, and Razorpay payment capture proceed exactly as originally implemented",
+        "Only 1 Webhook Touchpoint required: Express server forwards paid orders to Sai Traders Ingress Webhook",
+        "No requirement for external team to install Tally bridges, WhatsApp SDKs, or local connectors"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Distributed Seat-Booking Concurrency Engine",
+      "items": [
+        "Implements a BookMyShow-style 10-minute hold reservation across both digital channels",
+        "WhatsApp hold requests instantly mirror into MongoDB reservedStock, preventing web buyers from purchasing held units",
+        "Web checkouts lock inventory locally; captured Razorpay payments trigger downstream final deductions",
+        "Expired or abandoned checkouts automatically release held quantities back to public availability"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Autonomous Tally ERP & Physical Fulfillment",
+      "items": [
+        "Verified orders are automatically enqueued with idempotent protection to the transactional agent jobs queue",
+        "Local shop daemon securely polls via outbound HTTPS and synchronizes sales vouchers into TallyPrime :9000",
+        "Customer ledgers automatically mapped to Sundry Debtors with compliant GST invoicing under Online Godown",
+        "Tumakuru store fulfillment prints pick-lists, packs sarees, and generates customer courier tracking updates"
+      ]
+    }
+  ]
+}

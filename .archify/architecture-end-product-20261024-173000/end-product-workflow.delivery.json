@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "2f680ea7-95ee-4103-a733-1fbe7df8f7d2",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "c:\\sai_traders\\.archify\\architecture-end-product-20261024-173000\\candidate.json",
+  "output": "C:\\sai_traders\\.archify\\architecture-end-product-20261024-173000\\end-product-workflow.html",
+  "specification": {
+    "sha256": "8048060d6424d57b95dea45a2e9d6d9d183c755f8b08c7f68c31a7aaf765da5a",
+    "bytes": 10727
+  },
+  "artifact": {
+    "sha256": "77272d70f60bfdaff18975104ffb6687ad567ce515def777db2292a14645c7a2",
+    "bytes": 795960
+  }
+}
