@@ -114,3 +114,4 @@ node scripts/rebind_tally_company.js --company "MIithun" --guid "<GUID_from_pref
 
 ### Step 6: End of Day Shutdown
 - Double-click **`STOP_STORE_PC.bat`** to safely terminate background daemon processes.
+

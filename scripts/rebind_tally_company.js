@@ -211,3 +211,4 @@ main().catch(err => {
   console.error('\n[ERROR] Rebinding failed:', err.message);
   process.exit(1);
 });
+

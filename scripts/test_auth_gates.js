@@ -146,3 +146,40 @@ assert.strictEqual(exempt('::1', { 'x-forwarded-for': '203.0.113.9' }), false);
 assert.strictEqual(exempt('192.168.1.50', {}), false);
 
 console.log('rate limit tiering: all 12 cases pass');
+
+// --- configurable Tally naming ------------------------------------------------
+// 'Sarees' was hardcoded in 13 places, taken from the first shop's company. Company
+// SYED has godowns ["Main Location","SAREE"] and no "Sarees" stock group, so every
+// item-creation envelope referenced a group that did not exist and Tally rejected it.
+// The defaults are the two names TallyPrime guarantees in every company.
+function tallyNames(env) {
+  return {
+    group: (env.TALLY_STOCK_GROUP || 'Primary').trim(),
+    godown: (env.TARGET_GODOWN || env.TALLY_DEFAULT_GODOWN || 'Main Location').trim(),
+  };
+}
+
+// A fresh company with nothing configured must still work
+assert.deepStrictEqual(tallyNames({}), { group: 'Primary', godown: 'Main Location' });
+
+// Company SYED: godown named SAREE, no Sarees group
+assert.deepStrictEqual(tallyNames({ TARGET_GODOWN: 'SAREE' }), { group: 'Primary', godown: 'SAREE' });
+
+// A shop that genuinely has its own group can say so
+assert.deepStrictEqual(
+  tallyNames({ TALLY_STOCK_GROUP: 'Sarees', TARGET_GODOWN: 'Online_saree' }),
+  { group: 'Sarees', godown: 'Online_saree' }
+);
+
+// Stray whitespace in a .env line must not become part of the Tally name
+assert.deepStrictEqual(tallyNames({ TALLY_STOCK_GROUP: '  Silk  ' }).group, 'Silk');
+
+// An empty value falls back rather than sending an empty tag to Tally
+assert.deepStrictEqual(tallyNames({ TALLY_STOCK_GROUP: '' }).group, 'Primary');
+
+// The godown is independent of the group — they are different things in Tally and
+// were conflated here because the first shop happened to use similar names
+const n = tallyNames({ TALLY_STOCK_GROUP: 'Primary', TARGET_GODOWN: 'SAREE' });
+assert.notStrictEqual(n.group, n.godown);
+
+console.log('configurable tally naming: all 6 cases pass');

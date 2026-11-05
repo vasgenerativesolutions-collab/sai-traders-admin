@@ -277,7 +277,15 @@ function shopKey(key) {
 // -----------------------------------------------------------------------------
 // SaaS Multi-Shop & Godown Configuration (Strict Godown Isolation)
 // -----------------------------------------------------------------------------
-let currentTargetGodown = (env.TARGET_GODOWN || 'Sarees').trim();
+// Stock group that created items are filed under. 'Sarees' was hardcoded in 13 places;
+// it exists only in the original shop's company. Primary exists in every company.
+const TALLY_STOCK_GROUP = (env.TALLY_STOCK_GROUP || process.env.TALLY_STOCK_GROUP || 'Primary').trim();
+
+// Fallback godown when none has been configured yet. Main Location is the godown
+// TallyPrime creates automatically, so it is always present.
+const TALLY_DEFAULT_GODOWN = (env.TALLY_DEFAULT_GODOWN || process.env.TALLY_DEFAULT_GODOWN || 'Main Location').trim();
+
+let currentTargetGodown = (env.TARGET_GODOWN || TALLY_DEFAULT_GODOWN).trim();
 
 async function getTargetGodown() {
   try {
@@ -1422,7 +1430,7 @@ async function processPendingTallyActions() {
 <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
 <STOCKITEM NAME="${escapeXml(targetName)}" ACTION="Alter">
   <NAME>${escapeXml(targetName)}</NAME>
-  <PARENT>Sarees</PARENT>
+  <PARENT>${escapeXml(TALLY_STOCK_GROUP)}</PARENT>
   <OPENINGBALANCE>0 ${uLabel}</OPENINGBALANCE>
   <OPENINGRATE>0/${uLabel}</OPENINGRATE>
   <OPENINGVALUE>0</OPENINGVALUE>
@@ -1960,7 +1968,7 @@ async function broadcastTallyHeartbeat(status = {}) {
       guid: status.guid || null,
       identityVerified: Boolean(status.verified),
       firstTimeRegistration: Boolean(status.firstTime),
-      godown: godown || 'Sarees',
+      godown: godown || TALLY_DEFAULT_GODOWN,
       godowns: godownNames.length > 0 ? godownNames : undefined,
       godownHierarchy: hierarchyData,
       lastSeen: Date.now(),
@@ -2183,7 +2191,7 @@ function computeCosineSimilarity(vecA, vecB) {
 // Helper: Tally XML Generators (Sales Voucher & Receipt Note)
 // -----------------------------------------------------------------------------
 function buildTallySalesVoucherXml({ orderNumber, stockItemName, qty, rate, unitLabel = 'Nos', godownName = null, buyerName = 'WhatsApp Customer', dateOverride = null }) {
-  const targetGodown = (godownName || currentTargetGodown || 'Sarees').trim();
+  const targetGodown = (godownName || currentTargetGodown || TALLY_DEFAULT_GODOWN).trim();
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -2247,7 +2255,7 @@ function buildTallySalesVoucherXml({ orderNumber, stockItemName, qty, rate, unit
 
 function buildTallyReceiptNoteXml({ refNumber, stockItemName, qty, rate, unitLabel = 'Nos', godownName = null, dateOverride = null }) {
   // SEC-04: All dynamic values escaped through escapeXml() to prevent XML injection
-  const targetGodown = escapeXml((godownName || currentTargetGodown || 'Sarees').trim());
+  const targetGodown = escapeXml((godownName || currentTargetGodown || TALLY_DEFAULT_GODOWN).trim());
   const safeRefNumber = escapeXml(String(refNumber || ''));
   const safeStockItemName = escapeXml(String(stockItemName || ''));
   const safeUnitLabel = escapeXml(String(unitLabel || 'Nos'));
@@ -2311,7 +2319,7 @@ function escapeXml(unsafe) {
 
 // Push/Create or Alter Stock Item Master in Tally ERP with Godown Allocation
 async function pushProductToTallyMaster({ sku, name, quantity = 0, rate = 5000, unitLabel = 'Pcs', godownName = null }) {
-  const targetGodown = (godownName || await getTargetGodown() || 'Sarees').trim();
+  const targetGodown = (godownName || await getTargetGodown() || TALLY_DEFAULT_GODOWN).trim();
   const cleanSku = escapeXml((sku || '').trim());
   const cleanName = escapeXml((name || sku || '').trim());
   const cleanQty = Math.max(0, parseInt(quantity, 10) || 0);
@@ -2335,7 +2343,7 @@ async function pushProductToTallyMaster({ sku, name, quantity = 0, rate = 5000, 
 <ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
 <BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>All Masters</REPORTNAME></REQUESTDESC>
 <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
-<STOCKGROUP NAME="Sarees" ACTION="Create"><NAME>Sarees</NAME></STOCKGROUP>
+<STOCKGROUP NAME="${escapeXml(TALLY_STOCK_GROUP)}" ACTION="Create"><NAME>${escapeXml(TALLY_STOCK_GROUP)}</NAME></STOCKGROUP>
 </TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>`;
     await sendToTally(groupXml, 4000);
   } catch (_) {}
@@ -2383,7 +2391,7 @@ async function pushProductToTallyMaster({ sku, name, quantity = 0, rate = 5000, 
 <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TALLYUDF">
 <STOCKITEM NAME="${cleanSku}" ACTION="${action}">
   ${nameXml}
-  <PARENT>Sarees</PARENT>
+  <PARENT>${escapeXml(TALLY_STOCK_GROUP)}</PARENT>
   <BASEUNITS>${unitLabel}</BASEUNITS>
   <OPENINGBALANCE>${cleanQty} ${unitLabel}</OPENINGBALANCE>
   <OPENINGRATE>${cleanRate.toFixed(2)}/${unitLabel}</OPENINGRATE>
@@ -2468,7 +2476,9 @@ async function fetchAllTallyStockItems() {
     let blockMatch;
     while ((blockMatch = blockRegex.exec(res)) !== null) {
       const name = unescapeXml(blockMatch[1]).trim();
-      if (!name || name.toLowerCase() === 'sarees' || name.toLowerCase() === 'primary') continue;
+      // Skip the group heading rows Tally interleaves with items.
+      const lower = name.toLowerCase();
+      if (!name || lower === TALLY_STOCK_GROUP.toLowerCase() || lower === 'primary' || lower === 'sarees') continue;
       const body = blockMatch[2];
 
       // Which godowns hold this item, and each one's OPENING weight.
@@ -2982,7 +2992,7 @@ async function performMorningStockSync() {
 <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
 <STOCKITEM NAME="${escapeXml(tallyItem.name)}" ACTION="Alter">
   <NAME>${escapeXml(tallyItem.name)}</NAME>
-  <PARENT>Sarees</PARENT>
+  <PARENT>${escapeXml(TALLY_STOCK_GROUP)}</PARENT>
   <OPENINGBALANCE>0 ${unitLabel}</OPENINGBALANCE>
   <OPENINGRATE>0/${unitLabel}</OPENINGRATE>
   <OPENINGVALUE>0</OPENINGVALUE>
@@ -3686,7 +3696,7 @@ app.get('/api/products', async (req, res) => {
         if (lowerCode === 'jari' || lowerCode === 'jari1' || lowerCode === 'silk') {
           tallyGroup = 'Primary';
         } else {
-          tallyGroup = 'Sarees';
+          tallyGroup = TALLY_STOCK_GROUP;
         }
       }
 
@@ -4877,7 +4887,7 @@ app.delete('/api/products/:id', requireAdminAuth, async (req, res) => {
 <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
 <STOCKITEM NAME="${escapeXml(itemName)}" ACTION="Alter">
   <NAME>${escapeXml(itemName)}</NAME>
-  <PARENT>Sarees</PARENT>
+  <PARENT>${escapeXml(TALLY_STOCK_GROUP)}</PARENT>
   <OPENINGBALANCE>0 ${unitLabel}</OPENINGBALANCE>
   <OPENINGRATE>0/${unitLabel}</OPENINGRATE>
   <OPENINGVALUE>0</OPENINGVALUE>
@@ -5346,7 +5356,7 @@ app.post('/api/adjust-tally-stock', requireAdminAuth, async (req, res) => {
       if (lowerCode === 'jari' || lowerCode === 'jari1' || lowerCode === 'silk') {
         updatedAttributes.tally_group = 'Primary';
       } else {
-        updatedAttributes.tally_group = 'Sarees';
+        updatedAttributes.tally_group = TALLY_STOCK_GROUP;
       }
     }
 
