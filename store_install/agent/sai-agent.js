@@ -42,6 +42,7 @@ const TALLY_PORT = parseInt(process.env.TALLY_PORT || '9000', 10);
 
 const POLL_MS = 5000;        // how often to ask for work
 const HEARTBEAT_MS = 30000;  // how often to report liveness
+const STOCK_SYNC_MS = 120000; // how often to push a fresh stock reading unprompted
 const TALLY_SPACING_MS = 250; // Tally's XML engine is single threaded — never crowd it
 
 const STATE_DIR = path.join(process.env.PROGRAMDATA || os.homedir(), 'SaiAgent');
@@ -164,7 +165,14 @@ function tallyRaw(xml, timeoutMs = 15000) {
 }
 
 function tally(xml, timeoutMs) {
-  tallyChain = tallyChain.then(async () => {
+  // The queue has to survive a failure. Written as .then(onOk, onFail) the rejection
+  // handler ran INSTEAD of the new work, so one unreachable Tally call left every
+  // later call returning undefined until the agent was restarted — a single hiccup
+  // disabled Tally access for the whole session.
+  //
+  // Settle the previous link first, then always run the new work. The caller still
+  // sees real errors; only the chain is insulated.
+  const next = tallyChain.catch(() => {}).then(async () => {
     const gap = Date.now() - lastTallyCall;
     if (gap < TALLY_SPACING_MS) await new Promise((r) => setTimeout(r, TALLY_SPACING_MS - gap));
     try {
@@ -172,8 +180,9 @@ function tally(xml, timeoutMs) {
     } finally {
       lastTallyCall = Date.now();
     }
-  }, () => {});
-  return tallyChain;
+  });
+  tallyChain = next.catch(() => {});
+  return next;
 }
 
 // Must not match <NAME.LIST>, the wrapper Tally nests inside COMPANY and STOCKITEM.
@@ -209,6 +218,7 @@ async function readCompany() {
  */
 async function readGodownBalances(godownName) {
   const raw = await tally(collection('SI', 'StockItem', 'Name,Parent,ClosingBalance,BatchAllocations.*'), 25000);
+  if (typeof raw !== 'string' || !raw) throw new Error('Tally returned no response');
   const items = [];
   for (const m of raw.matchAll(/<STOCKITEM NAME="([^"]+)"[^>]*>([\s\S]*?)<\/STOCKITEM>/gi)) {
     const name = m[1];
@@ -258,6 +268,181 @@ async function readGodownBalances(godownName) {
     });
   }
   return { godown: godownName || null, itemCount: items.length, items };
+}
+
+
+const escapeXml = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+
+const importEnvelope = (inner) => `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+<BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>All Masters</REPORTNAME></REQUESTDESC>
+<REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">${inner}</TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>`;
+
+/** Tally answers imports with counters; anything but a clean create/alter is a failure. */
+function importOutcome(raw) {
+  const num = (t) => {
+    const m = raw.match(new RegExp('<' + t + '>([^<]*)</' + t + '>', 'i'));
+    return m ? parseInt(m[1].trim(), 10) || 0 : 0;
+  };
+  const errors = num('ERRORS') + num('EXCEPTIONS');
+  const lineError = (raw.match(/<LINEERROR>([^<]*)<\/LINEERROR>/i) || [, ''])[1].trim();
+  return {
+    created: num('CREATED'),
+    altered: num('ALTERED'),
+    errors,
+    message: lineError || null,
+    ok: errors === 0 && !lineError && (num('CREATED') > 0 || num('ALTERED') > 0),
+  };
+}
+
+/** Every godown in the company, with its parent and closing total. */
+async function readGodowns() {
+  const raw = await tally(collection('AllGodowns', 'Godown', 'Name,Parent,ClosingBalance'));
+  const godowns = [];
+  for (const b of raw.matchAll(/<GODOWN\b[^>]*>([\s\S]*?)<\/GODOWN>/gi)) {
+    const name = (b[0].match(/NAME="([^"]+)"/i) || [, ''])[1];
+    if (!name) continue;
+    // Tally prefixes the root parent with a control character, exported as &#4;
+    const parent = tag(b[1], 'PARENT')
+      .replace(/&#\d+;/g, '').replace(/&#x[0-9a-f]+;/gi, '').replace(/[^\x20-\x7E]/g, '').trim();
+    godowns.push({
+      name,
+      parent: /^primary$/i.test(parent) || !parent ? null : parent,
+      closing: tag(b[1], 'CLOSINGBALANCE') || null,
+    });
+  }
+  return { count: godowns.length, godowns };
+}
+
+/** Create a godown if it is missing. Main Location always exists, so never touch it. */
+async function ensureGodown(name) {
+  const clean = String(name || '').trim();
+  if (!clean || clean.toLowerCase() === 'main location') return { skipped: true };
+  const xml = importEnvelope(
+    `<GODOWN NAME="${escapeXml(clean)}" ACTION="Create"><NAME>${escapeXml(clean)}</NAME><PARENT/></GODOWN>`
+  );
+  const out = importOutcome(await tally(xml));
+  // Already existing is success, not failure.
+  return { godown: clean, created: out.created > 0, note: out.message };
+}
+
+/**
+ * Create a stock item, or set an existing one's quantity.
+ *
+ * The stock GROUP and the GODOWN are different things in Tally and are passed
+ * separately. Defaults are the names every company has, so a fresh company needs no
+ * preparation: Primary as the group, Main Location as the godown.
+ */
+async function createStockItem(p) {
+  const name = String(p.name || p.sku || '').trim();
+  if (!name) throw new Error('an item name is required');
+  const group = String(p.group || 'Primary').trim();
+  const godown = String(p.godown || 'Main Location').trim();
+  const unit = String(p.unit || 'Pcs').trim();
+  const qty = Math.max(0, Number(p.quantity) || 0);
+  const rate = Number(p.rate) || 0;
+  const value = (qty * rate).toFixed(2);
+
+  await ensureGodown(godown);
+
+  const batch = qty > 0 ? `
+  <BATCHALLOCATIONS.LIST>
+    <GODOWNNAME>${escapeXml(godown)}</GODOWNNAME>
+    <BATCHNAME>Primary Batch</BATCHNAME>
+    <OPENINGBALANCE>${qty} ${escapeXml(unit)}</OPENINGBALANCE>
+    <OPENINGRATE>${rate.toFixed(2)}/${escapeXml(unit)}</OPENINGRATE>
+    <OPENINGVALUE>-${value}</OPENINGVALUE>
+  </BATCHALLOCATIONS.LIST>` : '';
+
+  const body = (action) => importEnvelope(`<STOCKITEM NAME="${escapeXml(name)}" ACTION="${action}">
+  <NAME>${escapeXml(name)}</NAME>
+  <PARENT>${escapeXml(group)}</PARENT>
+  <BASEUNITS>${escapeXml(unit)}</BASEUNITS>
+  <OPENINGBALANCE>${qty} ${escapeXml(unit)}</OPENINGBALANCE>
+  <OPENINGRATE>${rate.toFixed(2)}/${escapeXml(unit)}</OPENINGRATE>
+  <OPENINGVALUE>-${value}</OPENINGVALUE>${batch}
+</STOCKITEM>`);
+
+  let out = importOutcome(await tally(body('Create')));
+  if (!out.ok) out = importOutcome(await tally(body('Alter'))); // already present
+  if (!out.ok) throw new Error(out.message || 'Tally rejected the item');
+  return { item: name, group, godown, quantity: qty, created: out.created > 0, altered: out.altered > 0 };
+}
+
+/**
+ * Set an item's stock to an exact figure.
+ *
+ * The delta is computed against Tally's CURRENT closing balance, read immediately
+ * before the write. Computing it anywhere else — or earlier — is what previously turned
+ * "set to 40" into 46: the baseline was a cached number that had drifted, and Tally
+ * applied the difference to its own, different, reality.
+ */
+async function adjustStock(p) {
+  const name = String(p.name || p.sku || '').trim();
+  if (!name) throw new Error('an item name is required');
+  const target = Number(p.targetQuantity);
+  if (!Number.isFinite(target) || target < 0) throw new Error('a target quantity is required');
+  const godown = String(p.godown || 'Main Location').trim();
+  const unit = String(p.unit || 'Pcs').trim();
+  const rate = Number(p.rate) || 0;
+
+  const reading = await readGodownBalances(godown);
+  const item = reading.items.find((i) => i.name.toLowerCase() === name.toLowerCase());
+
+  // Unknown to Tally: creating it at the target quantity IS the adjustment, and no
+  // voucher must follow or the quantity doubles.
+  if (!item) {
+    const made = await createStockItem({ name, godown, unit, rate, quantity: target, group: p.group });
+    return { ...made, baseline: 0, delta: target, via: 'created' };
+  }
+
+  const gKey = Object.keys(item.godowns).find((g) => g.toLowerCase() === godown.toLowerCase());
+  const baseline = gKey !== undefined ? Number(item.godowns[gKey]) || 0 : Number(item.closing) || 0;
+  const delta = Math.round(target - baseline);
+
+  if (delta === 0) return { item: name, baseline, delta: 0, via: 'already correct' };
+
+  const ref = (delta > 0 ? 'RN-' : 'VCH-') + Date.now().toString().slice(-8);
+  const qty = Math.abs(delta);
+  const amount = (qty * rate).toFixed(2);
+
+  // Receipt note to bring stock in, sales voucher to take it out. Both are ordinary
+  // Tally vouchers, so the movement is auditable rather than an invisible edit.
+  const voucherType = delta > 0 ? 'Receipt Note' : 'Sales';
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+<BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME></REQUESTDESC><REQUESTDATA>
+<TALLYMESSAGE xmlns:UDF="TallyUDF">
+<VOUCHER VCHTYPE="${voucherType}" ACTION="Create">
+  <DATE>${new Date().toISOString().slice(0, 10).replace(/-/g, '')}</DATE>
+  <VOUCHERTYPENAME>${voucherType}</VOUCHERTYPENAME>
+  <VOUCHERNUMBER>${escapeXml(ref)}</VOUCHERNUMBER>
+  <REFERENCE>${escapeXml(ref)}</REFERENCE>
+  <NARRATION>Stock adjustment to ${target} ${escapeXml(unit)} by Sai Agent</NARRATION>
+  <PARTYLEDGERNAME>${delta > 0 ? 'Sundry Creditors' : 'Cash'}</PARTYLEDGERNAME>
+  <ALLINVENTORYENTRIES.LIST>
+    <STOCKITEMNAME>${escapeXml(name)}</STOCKITEMNAME>
+    <ISDEEMEDPOSITIVE>${delta > 0 ? 'Yes' : 'No'}</ISDEEMEDPOSITIVE>
+    <RATE>${rate.toFixed(2)}/${escapeXml(unit)}</RATE>
+    <AMOUNT>${delta > 0 ? '-' : ''}${amount}</AMOUNT>
+    <ACTUALQTY>${qty} ${escapeXml(unit)}</ACTUALQTY>
+    <BILLEDQTY>${qty} ${escapeXml(unit)}</BILLEDQTY>
+    <BATCHALLOCATIONS.LIST>
+      <GODOWNNAME>${escapeXml(godown)}</GODOWNNAME>
+      <BATCHNAME>Primary Batch</BATCHNAME>
+      <AMOUNT>${delta > 0 ? '-' : ''}${amount}</AMOUNT>
+      <ACTUALQTY>${qty} ${escapeXml(unit)}</ACTUALQTY>
+      <BILLEDQTY>${qty} ${escapeXml(unit)}</BILLEDQTY>
+    </BATCHALLOCATIONS.LIST>
+  </ALLINVENTORYENTRIES.LIST>
+</VOUCHER>
+</TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>`;
+
+  const out = importOutcome(await tally(xml));
+  if (!out.ok) throw new Error(out.message || 'Tally rejected the adjustment voucher');
+  return { item: name, godown, baseline, target, delta, voucher: ref, via: voucherType };
 }
 
 // ---------------------------------------------------------------------------
@@ -349,8 +534,17 @@ async function runJob(job) {
       return await readGodownBalances(job.payload && job.payload.godown_name);
     case 'preflight': {
       const company = await readCompany();
-      return { company, tallyReachable: Boolean(company) };
+      const godowns = await readGodowns();
+      return { company, godowns: godowns.godowns, tallyReachable: Boolean(company) };
     }
+    case 'read_godowns':
+      return await readGodowns();
+    case 'create_godown':
+      return await ensureGodown(job.payload && job.payload.godown);
+    case 'create_stock_item':
+      return await createStockItem(job.payload || {});
+    case 'adjust_stock':
+      return await adjustStock(job.payload || {});
     default:
       throw new Error(`this agent does not handle "${job.type}" yet`);
   }
@@ -420,6 +614,7 @@ async function main() {
   log('running — waiting for work');
 
   let lastBeat = Date.now();
+  let lastStockSync = 0;
   let idleLogged = false;
 
   for (;;) {
@@ -431,10 +626,34 @@ async function main() {
 
       await drainOutbox(token);
 
+      // Routine stock refresh is the agent's own job. Nothing has to enqueue it, so
+      // stock cannot go stale because a scheduler was never set up or stopped running.
+      if (Date.now() - lastStockSync > STOCK_SYNC_MS) {
+        lastStockSync = Date.now();
+        try {
+          const reading = await readGodownBalances(null);
+          const res = await callCloud('sync', { deviceToken: token, result: reading });
+          const eff = res.body && res.body.effect;
+          log(`stock synced — ${reading.itemCount} item(s)` +
+              (eff ? `, ${eff.applied} updated` + (eff.unallocatedItems ? `, ${eff.unallocatedItems} need a godown` : '') : ''));
+        } catch (err) {
+          warn(`stock sync: ${err.message}`);
+        }
+      }
+
       const claimed = await callCloud('claim', { deviceToken: token });
       if (claimed.status === 401) {
-        warn('this device was revoked — stopping');
-        process.exit(1);
+        // Either this PC was unpaired, or a newer PC was approved for this shop and
+        // took over. Forget the identity so the same machine can simply be re-paired,
+        // and stop rather than compete with the new one.
+        try { fs.unlinkSync(TOKEN_FILE); } catch (_) {}
+        banner([
+          'THIS PC IS NO LONGER CONNECTED',
+          '',
+          'It was unpaired, or another PC was connected for this shop.',
+          'Run the agent again to connect this PC afresh.',
+        ]);
+        process.exit(0);
       }
 
       const job = claimed.body && claimed.body.job;

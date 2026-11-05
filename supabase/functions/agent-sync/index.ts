@@ -98,7 +98,7 @@ async function enroll(body: Record<string, unknown>) {
       device_name: deviceName,
       enrollment_code: code,
       enrollment_expires_at: expires,
-      status: 'revoked', // awaiting approval — see note above; authenticate() refuses it
+      status: 'pending', // authenticate() requires 'active', so this is inert until approved
       credential_hash: await hashToken(token),
       version: token,
     })
@@ -187,6 +187,19 @@ async function approve(req: Request, body: Record<string, unknown>) {
 
   const { error } = await db.from('agent_devices').update(patch).eq('id', device.id);
   if (error) return json({ error: 'approve_failed', detail: error.message }, 500);
+
+  // Retire every other agent for this shop. One Tally, one agent.
+  const { data: retired } = await db
+    .from('agent_devices')
+    .update({ status: 'revoked', revoked_at: new Date().toISOString() })
+    .eq('shop_id', device.shop_id)
+    .eq('status', 'active')
+    .neq('id', device.id)
+    .select('id, device_name');
+
+  if (retired?.length) {
+    console.log(`[agent-sync] retired ${retired.length} previous agent(s) for shop ${device.shop_id}`);
+  }
 
   console.log(`[agent-sync] ${userData.user.email} approved device ${device.id}`);
   return json({ ok: true, deviceId: device.id, deviceName: patch.device_name || device.device_name });
@@ -340,6 +353,29 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------
+// sync — the agent volunteers a stock reading on its own schedule.
+//
+// No job, no queue, no cron. Routine refresh is the agent's own responsibility, which
+// removes an entire class of "stock is stale because nothing enqueued the work".
+// ---------------------------------------------------------------------------
+async function syncStock(body: Record<string, unknown>) {
+  const device = await authenticate(body.deviceToken);
+  if (!device) return json({ error: 'unauthorized' }, 401);
+
+  const result = (body.result || {}) as Record<string, unknown>;
+  if (!Array.isArray(result.items)) return json({ error: 'items_required' }, 400);
+
+  await db.from('agent_devices').update({
+    last_seen_at: new Date().toISOString(),
+    tally_reachable: true,
+    company_loaded: true,
+  }).eq('id', device.id);
+
+  const effect = await applyStockReading(device.shop_id, result);
+  return json({ ok: true, effect });
+}
+
+// ---------------------------------------------------------------------------
 // heartbeat — liveness plus the cloud-side company check.
 //
 // The GUID is verified HERE rather than on the device. A tampered agent can lie about
@@ -411,6 +447,7 @@ Deno.serve(async (req) => {
       case 'enroll-status': return await enrollStatus(body);
       case 'approve': return await approve(req, body);
       case 'claim': return await claim(body);
+      case 'sync': return await syncStock(body);
       case 'report': return await report(body);
       case 'heartbeat': return await heartbeat(body);
       default: return json({ error: 'unknown_action', action }, 404);
