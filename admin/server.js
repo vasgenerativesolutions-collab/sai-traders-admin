@@ -3516,7 +3516,7 @@ app.post('/api/tally/execute-xml', requireAdminAuth, express.text({ type: ['text
 // -----------------------------------------------------------------------------
 // 1. API: System Health & Diagnostics
 // -----------------------------------------------------------------------------
-app.get('/api/status', async (req, res) => {
+app.get('/api/status', requireAdminAuth, async (req, res) => {
   try {
     let tallyStatus = { connected: false, latencyMs: null, itemCount: 0, remoteStore: false, identityVerified: false };
     
@@ -3608,7 +3608,10 @@ app.get('/api/status', async (req, res) => {
     let productCount = 0;
     let videoCount = 0;
     try {
-      const pRes = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?select=id`, {
+      // This shop, and only products that are actually in the catalogue. Counting
+      // every row in the table showed 13 against a catalogue of 2, because archived
+      // products and other shops were both included.
+      const pRes = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?select=id&${shopFilterFor(req)}&status=not.in.(archived,deleted)`, {
         headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
       });
       const pData = await pRes.json();

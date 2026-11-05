@@ -386,17 +386,35 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
   // here contains an underscore.
   const { data: catalogue } = await db
     .from('saree_catalog')
-    .select('id, sku, tally_part_number, stock_quantity, status, price')
+    .select('id, sku, tally_part_number, stock_quantity, status, price, item_created_in_tally, stock_added_in_tally')
     .eq('shop_id', shopId);
 
-  const byName = new Map<string, { id: string; stock_quantity: number }>();
+  const byName = new Map<string, {
+    id: string;
+    stock_quantity: number;
+    status: string | null;
+    price: number;
+    item_created_in_tally: boolean | null;
+    stock_added_in_tally: boolean | null;
+  }>();
   for (const row of catalogue || []) {
-    const r = row as { id: string; sku: string | null; tally_part_number: string | null; stock_quantity: number | null };
+    const r = row as {
+      id: string;
+      sku: string | null;
+      tally_part_number: string | null;
+      stock_quantity: number | null;
+      status: string | null;
+      price: number | null;
+      item_created_in_tally: boolean | null;
+      stock_added_in_tally: boolean | null;
+    };
     const entry = {
       id: r.id,
       stock_quantity: Number(r.stock_quantity) || 0,
       status: r.status,
       price: Number(r.price) || 0,
+      item_created_in_tally: r.item_created_in_tally,
+      stock_added_in_tally: r.stock_added_in_tally,
     };
     for (const candidate of [r.sku, r.tally_part_number]) {
       const k = String(candidate || '').trim().toLowerCase();
@@ -435,6 +453,12 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (row.stock_quantity !== sellable) patch.stock_quantity = sellable;
     if (tallyRate > 0) patch.tally_rate = tallyRate;
+
+    // Tally just told us this item exists, so record that. The dashboard's "Not in
+    // Tally" badge reads this flag, and nothing kept it truthful — an item sitting in
+    // Tally with stock was still labelled missing from it.
+    if (row.item_created_in_tally !== true) patch.item_created_in_tally = true;
+    if (sellable > 0 && row.stock_added_in_tally !== true) patch.stock_added_in_tally = true;
 
     // Fill the price only while it is still unset and the product is awaiting review.
     // That is not overwriting anyone's decision — there is no decision yet, and a
@@ -509,7 +533,12 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
   if (absent.length) {
     const { error } = await db
       .from('saree_catalog')
-      .update({ stock_quantity: 0, updated_at: new Date().toISOString() })
+      .update({
+        stock_quantity: 0,
+        item_created_in_tally: false,
+        stock_added_in_tally: false,
+        updated_at: new Date().toISOString(),
+      })
       .in('id', absent);
     if (!error) cleared = absent.length;
   }
