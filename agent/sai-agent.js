@@ -481,9 +481,24 @@ async function createStockItem(p) {
   <OPENINGVALUE>-${value}</OPENINGVALUE>${batch}
 </STOCKITEM>`);
 
-  let out = importOutcome(await tally(body('Create')));
-  if (!out.ok) out = importOutcome(await tally(body('Alter'))); // already present
-  if (!out.ok) throw new Error(out.message || 'Tally rejected the item');
+  let raw = await tally(body('Create'));
+  let out = importOutcome(raw);
+  if (!out.ok) { raw = await tally(body('Alter')); out = importOutcome(raw); } // already present
+
+  // Tally names what it thinks is wrong, and that name is sometimes misleading -
+  // it reported a missing unit for a unit that existed. Hand back its own reply and
+  // the masters we can see, so the next failure is diagnosable from the job alone
+  // instead of costing a round trip to the shop.
+  if (!out.ok) {
+    let units = [];
+    try { units = await readUnits(); } catch (_) {}
+    throw new Error(
+      (out.message || 'Tally rejected the item') +
+      ` — item="${name}" group="${group}" godown="${godown}" unit="${unit}" qty=${qty}` +
+      ` — units in Tally: ${units.length ? units.join(', ') : 'none readable'}` +
+      ` — Tally replied: ${String(raw).replace(/\s+/g, ' ').slice(0, 300)}`
+    );
+  }
   return { item: name, group, godown, quantity: qty, created: out.created > 0, altered: out.altered > 0 };
 }
 
