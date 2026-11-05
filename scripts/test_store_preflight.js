@@ -30,7 +30,11 @@ function parseGodowns(raw) {
   for (const b of raw.matchAll(/<GODOWN\b[^>]*>([\s\S]*?)<\/GODOWN>/gi)) {
     const name = (b[0].match(/NAME="([^"]+)"/i) || [, ''])[1];
     if (!name) continue;
-    const parent = tag(b[1], 'PARENT').replace(/[^\x20-\x7E]/g, '').trim();
+    const parent = tag(b[1], 'PARENT')
+      .replace(/&#\d+;/g, '')
+      .replace(/&#x[0-9a-f]+;/gi, '')
+      .replace(/[^\x20-\x7E]/g, '')
+      .trim();
     out.push({ name, parent: /^primary$/i.test(parent) || !parent ? null : parent, closing: tag(b[1], 'CLOSINGBALANCE') || null });
   }
   return out;
@@ -127,4 +131,10 @@ const winName = rel => {
 assert.strictEqual(winName('10.0.19045'), 'Windows 10');
 assert.strictEqual(winName('10.0.26300'), 'Windows 11');
 
-console.log('store preflight parsing: all 19 cases pass');
+// A company with no stock items cannot establish whether batch-wise details is on.
+// Reporting that as a failure sent someone to change a Tally setting unnecessarily.
+const empty = parseItems('');
+assert.strictEqual(empty.length, 0);
+assert.strictEqual(empty.filter(i => i.closing > 0).length, 0);
+
+console.log('store preflight parsing: all 21 cases pass');

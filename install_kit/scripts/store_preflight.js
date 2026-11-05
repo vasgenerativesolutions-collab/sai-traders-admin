@@ -219,7 +219,11 @@ async function discoverGodowns() {
     const name = (b[0].match(/NAME="([^"]+)"/i) || [, ''])[1];
     if (!name) continue;
     // Tally prefixes the root parent with a control character; treat it as root.
-    const parent = tag(b[1], 'PARENT').replace(/[^\x20-\x7E]/g, '').trim();
+    const parent = tag(b[1], 'PARENT')
+      .replace(/&#\d+;/g, '')          // numeric entity, e.g. the &#4; before 'Primary'
+      .replace(/&#x[0-9a-f]+;/gi, '')   // hex form of the same
+      .replace(/[^\x20-\x7E]/g, '')    // any raw control character
+      .trim();
     godowns.push({
       name,
       parent: /^primary$/i.test(parent) || !parent ? null : parent,
@@ -272,8 +276,16 @@ async function discoverStock() {
 
   check('Items holding stock', 'pass', `${withStock.length} of ${items.length}`);
 
-  // This is the setting that decides whether per-godown stock works at all.
+  // This is the setting that decides whether per-godown stock works at all — but it
+  // can only be judged from an item that actually holds stock. An empty company tells
+  // us nothing, so say that rather than failing it.
   const batchOn = attributed.length > 0;
+  if (withStock.length === 0) {
+    check('Per-godown figures exportable', 'warn', 'cannot tell — no item holds stock yet');
+    fix('This company has no stock to attribute, so the batch-wise setting cannot be');
+    fix('checked either way. Create one stock item with a quantity and a godown, then');
+    fix('run this again — section 5 will then confirm it for certain.');
+  } else {
   check('Per-godown figures exportable', batchOn ? (unattributed.length ? 'warn' : 'pass') : 'fail',
     `${attributed.length} of ${withStock.length} items attributed`);
   if (!batchOn) {
@@ -286,6 +298,8 @@ async function discoverStock() {
     fix('cannot be placed in a godown and will read as zero online:');
     unattributed.slice(0, 12).forEach(i => fix(`  ${i.name}  (${i.closingRaw})`));
     fix('Set a godown on each one\'s opening balance in Tally.');
+  }
+
   }
 
   if (negative.length) {
