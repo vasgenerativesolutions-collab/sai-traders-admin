@@ -46,3 +46,6 @@ release/
 SECURITY_AUDIT.md
 
 store_preflight_report.json
+
+# Clean install set staged for copying to a store PC — rebuilt, not source.
+test_install_kit/

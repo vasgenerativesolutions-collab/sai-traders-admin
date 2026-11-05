@@ -14,7 +14,10 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const KITS = ['store_install', 'install_kit'];
+// Defaults to both shipped kits; pass folder names to check a staged copy instead,
+// e.g. node scripts/test_install_kit.js test_install_kit
+const KITS = process.argv.slice(2).filter(Boolean);
+if (!KITS.length) KITS.push('store_install', 'install_kit');
 
 let failures = 0;
 let warnings = 0;
