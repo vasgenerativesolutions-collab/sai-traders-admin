@@ -45,7 +45,41 @@ if ($major -lt 18) {
 }
 Say "Node.js $nodeVersion - ok"
 
-# --- 2. Fetch ----------------------------------------------------------------
+# --- 2. Stop anything already running ----------------------------------------
+# Re-running this installer must leave exactly ONE current agent running. Older
+# agents do not take the single-instance lock, so they cannot be asked to stand
+# down - they have to be stopped at the OS level. Skipping this is what let a
+# hidden agent keep running stale code while a published fix looked broken.
+Say 'Stopping any agent already running ...'
+$stopped = 0
+try {
+  $procs = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction Stop
+  foreach ($p in $procs) {
+    if ($p.ProcessId -eq $PID) { continue }
+    $cmd = [string]$p.CommandLine
+    if ($cmd -match 'sai-agent\.js' -or $cmd -match 'store_supervisor\.js' -or $cmd -match 'agent.index\.js') {
+      try {
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop
+        $stopped = $stopped + 1
+      } catch {
+        Say "  could not stop process $($p.ProcessId): $($_.Exception.Message)"
+      }
+    }
+  }
+} catch {
+  Say '  could not inspect running processes (continuing)'
+}
+if ($stopped -gt 0) {
+  Say "Stopped $stopped older agent process(es)"
+} else {
+  Say 'Nothing was running'
+}
+
+# A lock left behind by a process we just killed would otherwise have to age out.
+$lock = Join-Path $env:PROGRAMDATA 'SaiAgent\agent.lock'
+if (Test-Path $lock) { Remove-Item $lock -Force -ErrorAction SilentlyContinue }
+
+# --- 3. Fetch ----------------------------------------------------------------
 Say 'Downloading the agent ...'
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 try {
@@ -60,7 +94,7 @@ try {
 $sizeKb = [math]::Round((Get-Item $AgentJs).Length / 1KB, 1)
 Say "Installed to $AgentJs ($sizeKb KB)"
 
-# --- 3. Start-on-login -------------------------------------------------------
+# --- 4. Start-on-login -------------------------------------------------------
 # A shortcut in the Startup folder needs no administrator rights, which keeps this a
 # single step for a shopkeeper.
 Say 'Setting it to start automatically ...'
@@ -79,7 +113,7 @@ try {
   Say 'Could not set auto-start (not fatal - you can start it by hand)'
 }
 
-# --- 4. Tally reminder -------------------------------------------------------
+# --- 5. Tally reminder -------------------------------------------------------
 # Checked rather than assumed, because this is the one thing the agent cannot fix.
 Say 'Checking TallyPrime ...'
 $tallyUp = $false
@@ -103,7 +137,7 @@ if ($tallyUp) {
   Write-Host ''
 }
 
-# --- 5. Run ------------------------------------------------------------------
+# --- 6. Run ------------------------------------------------------------------
 Head 'STARTING'
 Write-Host '  A six-character code will appear below.'
 Write-Host '  Enter it in the Sai Traders admin to connect this PC.'
