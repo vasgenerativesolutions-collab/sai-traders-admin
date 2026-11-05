@@ -49,6 +49,17 @@ const STATE_DIR = path.join(process.env.PROGRAMDATA || os.homedir(), 'SaiAgent')
 const TOKEN_FILE = path.join(STATE_DIR, 'device.enc');
 const OUTBOX_FILE = path.join(STATE_DIR, 'outbox.json');
 
+// A short fingerprint of this file, reported on every heartbeat so the running
+// version is visible from the cloud instead of having to be read off the machine.
+const AGENT_VERSION = (() => {
+  try {
+    const src = fs.readFileSync(__filename);
+    return require('crypto').createHash('sha256').update(src).digest('hex').slice(0, 10);
+  } catch (_) {
+    return 'unknown';
+  }
+})();
+
 // ---------------------------------------------------------------------------
 // Console output. Plain and sparse: a shopkeeper should be able to tell at a glance
 // whether this is healthy.
@@ -660,6 +671,7 @@ async function heartbeat(token) {
 
   const res = await callCloud('heartbeat', {
     deviceToken: token,
+    agentVersion: AGENT_VERSION,
     tally: {
       reachable,
       guid: company ? company.guid : null,
@@ -676,7 +688,7 @@ async function main() {
     try { fs.unlinkSync(TOKEN_FILE); log('identity cleared'); } catch (_) {}
   }
 
-  banner(['SAI AGENT', `${os.hostname()}  ·  Tally at ${TALLY_HOST}:${TALLY_PORT}`]);
+  banner(['SAI AGENT  ' + AGENT_VERSION, `${os.hostname()}  ·  Tally at ${TALLY_HOST}:${TALLY_PORT}`]);
 
   // Before doing any work, make sure this is the current version.
   if (await selfUpdate()) return;

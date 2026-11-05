@@ -108,7 +108,18 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
   section('Store PC');
   let activeDevice = null;
   try {
-    const devices = await api('agent_devices?select=device_name,status,last_seen_at,tally_reachable,company_loaded,revoked_at&order=last_seen_at.desc');
+    const devices = await api('agent_devices?select=device_name,status,last_seen_at,tally_reachable,company_loaded,revoked_at,version&order=last_seen_at.desc');
+
+    // What the repository is publishing, so a PC running something older is named
+    // rather than diagnosed from its symptoms.
+    let published = null;
+    try {
+      const res = await fetch('https://raw.githubusercontent.com/vasgenerativesolutions-collab/sai-traders-admin/main/agent/sai-agent.js', { signal: AbortSignal.timeout(15000) });
+      if (res.ok) {
+        const src = Buffer.from(await res.arrayBuffer());
+        published = require('crypto').createHash('sha256').update(src).digest('hex').slice(0, 10);
+      }
+    } catch (_) { /* offline — version comparison is skipped, not fatal */ }
     const active = devices.filter((d) => d.status === 'active' && !d.revoked_at);
     const pending = devices.filter((d) => d.status === 'pending');
 
@@ -129,6 +140,17 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
       else bad('  TallyPrime is not answering on that PC', 'open Tally, load the company, F1 > Settings > Connectivity (acts as: Both, port 9000)');
 
       if (!d.company_loaded) note('  no Tally company is open', 'load the company in Tally');
+
+      // A stale agent explains otherwise baffling failures, so say it outright.
+      const running = d.version && /^[0-9a-f]{10}$/.test(d.version) ? d.version : null;
+      if (!running) {
+        note('  that PC has not reported its version yet', 'it will on the next heartbeat after it updates');
+      } else if (published && running !== published) {
+        bad(`  running an old agent (${running}, published is ${published})`,
+          'restart the agent on that PC — it updates itself on start');
+      } else if (published) {
+        good(`  running the current agent (${running})`);
+      }
     }
 
     if (pending.length) {

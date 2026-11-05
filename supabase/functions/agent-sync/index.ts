@@ -311,7 +311,23 @@ async function report(body: Record<string, unknown>) {
 // ---------------------------------------------------------------------------
 async function applyStockReading(shopId: string, result: Record<string, unknown>) {
   const items = Array.isArray(result?.items) ? (result.items as Record<string, unknown>[]) : [];
-  if (!items.length) return { applied: 0, note: 'no items in result' };
+
+  // A company with no stock items is a real answer, not a non-event. Returning early
+  // left the last-read timestamp frozen, so the dashboard reported stock as hours
+  // stale while the agent was in fact reading Tally every two minutes.
+  //
+  // The timestamp and the empty picture are recorded, but catalogue quantities are
+  // NOT zeroed on an empty read. A transient fault that returned nothing would
+  // otherwise wipe every sellable figure in the shop; leaving them is the recoverable
+  // mistake, clearing them is not.
+  if (!items.length) {
+    const now = new Date().toISOString();
+    await db.from('app_settings').upsert([
+      { key: 'tally_godown_stock_matrix', value: JSON.stringify({}), updated_at: now },
+      { key: 'tally_unallocated_stock', value: JSON.stringify({}), updated_at: now },
+    ], { onConflict: 'key' });
+    return { applied: 0, note: 'Tally holds no stock items; catalogue quantities left untouched' };
+  }
 
   const { data: shop } = await db.from('shops').select('settings').eq('id', shopId).maybeSingle();
   const onlineGodown = String(
@@ -414,12 +430,16 @@ async function heartbeat(body: Record<string, unknown>) {
     identityNote = 'no_company_open';
   }
 
-  await db.from('agent_devices').update({
+  // version held the one-time token handoff, which is cleared as soon as the token is
+  // collected. From then on the column is free, and its name already says what this is.
+  const patch: Record<string, unknown> = {
     last_seen_at: new Date().toISOString(),
     tally_reachable: Boolean(tally.reachable),
     company_loaded: Boolean(reportedGuid),
     godown_exists: Boolean(tally.godownExists),
-  }).eq('id', device.id);
+  };
+  if (body.agentVersion) patch.version = String(body.agentVersion).slice(0, 40);
+  await db.from('agent_devices').update(patch).eq('id', device.id);
 
   return json({
     ok: true,
