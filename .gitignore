@@ -49,3 +49,7 @@ store_preflight_report.json
 
 # Clean install set staged for copying to a store PC — rebuilt, not source.
 test_install_kit/
+
+# Packaged kit archive — build output, and over GitHub's 100MB file limit.
+install_kit.zip
+*.zip
