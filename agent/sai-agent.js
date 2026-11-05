@@ -361,6 +361,49 @@ async function ensureStockGroup(name) {
   return { group: clean, created: out.created > 0 };
 }
 
+/**
+ * Create a unit of measure if it is missing.
+ *
+ * A fresh Tally company has NO units defined, so the very first item rejected with
+ * "Unit 'Pcs' does not exist!". Godown and stock group were already handled; the unit
+ * was the one prerequisite still assumed to be there.
+ */
+async function ensureUnit(name) {
+  const clean = String(name || '').trim();
+  if (!clean) return { skipped: true };
+  const xml = importEnvelope(
+    `<UNIT NAME="${escapeXml(clean)}" ACTION="Create">` +
+    `<NAME>${escapeXml(clean)}</NAME>` +
+    `<ORIGINALNAME>${escapeXml(clean)}</ORIGINALNAME>` +
+    `<ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>` +
+    `<DECIMALPLACES>0</DECIMALPLACES>` +
+    `</UNIT>`
+  );
+  const out = importOutcome(await tally(xml));
+  // Already existing is success, not failure — same as a godown.
+  return { unit: clean, created: out.created > 0, note: out.message };
+}
+
+/**
+ * Create a ledger if it is missing.
+ *
+ * A fresh company has only Cash and Profit & Loss A/c. "Sundry Creditors" is a GROUP,
+ * not a ledger, so naming it as a voucher's party was always going to be rejected.
+ */
+async function ensureLedger(name, parent) {
+  const clean = String(name || '').trim();
+  if (!clean) return { skipped: true };
+  const xml = importEnvelope(
+    `<LEDGER NAME="${escapeXml(clean)}" ACTION="Create">` +
+    `<NAME>${escapeXml(clean)}</NAME>` +
+    `<PARENT>${escapeXml(String(parent || 'Sundry Creditors'))}</PARENT>` +
+    `<ISBILLWISEON>No</ISBILLWISEON>` +
+    `</LEDGER>`
+  );
+  const out = importOutcome(await tally(xml));
+  return { ledger: clean, created: out.created > 0, note: out.message };
+}
+
 async function ensureGodown(name) {
   const clean = String(name || '').trim();
   if (!clean || clean.toLowerCase() === 'main location') return { skipped: true };
@@ -389,6 +432,7 @@ async function createStockItem(p) {
   const rate = Number(p.rate) || 0;
   const value = (qty * rate).toFixed(2);
 
+  await ensureUnit(unit);
   await ensureGodown(godown);
   await ensureStockGroup(group);
 
@@ -433,6 +477,8 @@ async function adjustStock(p) {
   const unit = String(p.unit || 'Pcs').trim();
   const rate = Number(p.rate) || 0;
 
+  await ensureUnit(unit);
+
   const reading = await readGodownBalances(godown);
   const item = reading.items.find((i) => i.name.toLowerCase() === name.toLowerCase());
 
@@ -449,13 +495,19 @@ async function adjustStock(p) {
 
   if (delta === 0) return { item: name, baseline, delta: 0, via: 'already correct' };
 
-  const ref = (delta > 0 ? 'RN-' : 'VCH-') + Date.now().toString().slice(-8);
+  const ref = (delta > 0 ? 'RN-' : 'DN-') + Date.now().toString().slice(-8);
   const qty = Math.abs(delta);
   const amount = (qty * rate).toFixed(2);
 
   // Receipt note to bring stock in, sales voucher to take it out. Both are ordinary
   // Tally vouchers, so the movement is auditable rather than an invisible edit.
-  const voucherType = delta > 0 ? 'Receipt Note' : 'Sales';
+  // A stock correction is not a sale. Receipt Note brings stock in and Delivery Note
+  // takes it out; neither posts revenue, so a correction cannot look like a sale in
+  // the books. Both name a party ledger, so one is provisioned for exactly this
+  // purpose rather than borrowing Cash or a group name that is not a ledger at all.
+  const voucherType = delta > 0 ? 'Receipt Note' : 'Delivery Note';
+  const party = 'Sai Stock Adjustment';
+  await ensureLedger(party, 'Sundry Creditors');
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
 <BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME></REQUESTDESC><REQUESTDATA>
@@ -466,7 +518,7 @@ async function adjustStock(p) {
   <VOUCHERNUMBER>${escapeXml(ref)}</VOUCHERNUMBER>
   <REFERENCE>${escapeXml(ref)}</REFERENCE>
   <NARRATION>Stock adjustment to ${target} ${escapeXml(unit)} by Sai Agent</NARRATION>
-  <PARTYLEDGERNAME>${delta > 0 ? 'Sundry Creditors' : 'Cash'}</PARTYLEDGERNAME>
+  <PARTYLEDGERNAME>${escapeXml(party)}</PARTYLEDGERNAME>
   <ALLINVENTORYENTRIES.LIST>
     <STOCKITEMNAME>${escapeXml(name)}</STOCKITEMNAME>
     <ISDEEMEDPOSITIVE>${delta > 0 ? 'Yes' : 'No'}</ISDEEMEDPOSITIVE>
