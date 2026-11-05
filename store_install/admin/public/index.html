@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261104_hostedauth_v6">
+  <link rel="stylesheet" href="style.css?v=20261105_agentapprove_v7">
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -1998,7 +1998,7 @@
       <div class="modal-body">
         <div style="margin-bottom:14px;">
           <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">
-            6-Character Activation Code (from PC Screen)*
+            6-Character Code shown on the PC screen*
           </label>
           <input type="text" id="inputPairDeviceCode" class="form-input" placeholder="e.g. K9T-4W2" maxlength="7" style="height:44px; font-family:var(--font-mono); font-size:18px; font-weight:700; letter-spacing:2px; text-transform:uppercase; text-align:center;">
         </div>
@@ -2012,7 +2012,7 @@
 
         <div class="form-group" style="margin-bottom:16px;">
           <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">
-            Select Godown Storage to Lock This Terminal To*
+            Godown to Lock This Terminal To (billing terminals only)
           </label>
           <select id="selectPairDeviceGodown" class="form-input" style="height:38px; cursor:pointer;">
             <option value="Online_saree" selected>📦 Online_saree (Default)</option>
@@ -3009,18 +3009,64 @@
       if (btn) { btn.disabled = true; btn.innerText = 'Authorizing & Locking...'; }
 
       try {
+        // A code can belong to either of two things, so try the store agent first.
+        //
+        //  - A store AGENT, which enrolled against the cloud directly. Approving it
+        //    needs nothing but this browser and a signed-in user, so it works even
+        //    when the shop PC is unreachable from here.
+        //  - A legacy billing TERMINAL, which registered with the shop's own server
+        //    and is locked to a godown.
+        const supaToken = window.supabaseToken || localStorage.getItem('sb_access_token') || '';
+        if (!supaToken) throw new Error('Please sign in again before approving a device.');
+
+        const fnBase = (window.SAI_SUPABASE_URL || '') + '/functions/v1/agent-sync';
+        const anon = window.SAI_SUPABASE_ANON_KEY || '';
+
+        const agentRes = await fetch(fnBase + '/approve', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: anon,
+            // The PERSON's token, not a device credential — approving is the one action
+            // that turns an inert enrolment into a working machine.
+            Authorization: 'Bearer ' + supaToken
+          },
+          body: JSON.stringify({ code, deviceName })
+        });
+        const agentData = await agentRes.json().catch(() => ({}));
+
+        if (agentRes.ok && agentData.ok) {
+          alert('Connected. "' + (agentData.deviceName || deviceName) + '" is now paired to this shop.\n\n' +
+                'The screen on that PC will show CONNECTED within a few seconds and it will not ask again.');
+          closePairDeviceModal();
+          return;
+        }
+
+        // Not an agent code — fall through to the legacy terminal flow, which needs the
+        // shop's own server and carries the godown lock.
+        if (agentData.error && agentData.error !== 'unknown_code') {
+          const reasons = {
+            sign_in_required: 'Your session expired. Sign in again and retry.',
+            code_expired: 'That code has expired. Restart the agent on the PC for a new one.',
+            device_revoked: 'That device was revoked. Restart the agent on the PC to enrol again.'
+          };
+          throw new Error(reasons[agentData.error] || agentData.error);
+        }
+
         const res = await fetch('/api/auth/approve-device-code', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code, deviceName, godown })
         });
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Failed to approve device');
+        const data = await res.json().catch(() => ({}));
+        if (!data.success) {
+          throw new Error(data.error || 'That code was not recognised. Check it matches the PC screen exactly.');
+        }
 
-        alert(`Success! Terminal "${deviceName}" has been paired and permanently locked to Godown: "${godown}". The screen on the store PC will unlock automatically!`);
+        alert('Terminal "' + deviceName + '" paired and locked to godown "' + godown + '".');
         closePairDeviceModal();
       } catch (err) {
-        alert('Pairing error: ' + err.message);
+        alert('Pairing failed: ' + err.message);
       } finally {
         if (btn) { btn.disabled = false; btn.innerText = 'Authorize & Lock Terminal'; }
       }
@@ -3288,7 +3334,7 @@
 
     initSupabaseAndCheckSession();
   </script>
-  <script src="app-v2.js?v=20261104_hostedauth_v6"></script>
+  <script src="app-v2.js?v=20261105_agentapprove_v7"></script>
 </body>
 </html>
 

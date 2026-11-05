@@ -262,7 +262,81 @@ async function report(body: Record<string, unknown>) {
     completed_at: new Date().toISOString(),
   }).eq('id', jobId);
 
-  return json({ ok: true, state: failed ? 'failed' : 'completed' });
+  // A completed stock reading is applied to the catalogue here. Without this the job
+  // would be marked done while the shop still showed nothing.
+  let effect: unknown = null;
+  if (!failed && job.type === 'read_godown_balances' && body.result) {
+    try {
+      effect = await applyStockReading(device.shop_id, body.result as Record<string, unknown>);
+    } catch (err) {
+      console.error('[agent-sync] applying stock reading failed:', err);
+      effect = { error: String(err instanceof Error ? err.message : err) };
+    }
+  }
+
+  return json({ ok: true, state: failed ? 'failed' : 'completed', effect });
+}
+
+// ---------------------------------------------------------------------------
+// Apply a stock reading to the shop's catalogue.
+//
+// Reporting a job as complete is not the same as the shop seeing its stock. This is
+// what turns a result into something the dashboard and the storefront read, and it
+// happens HERE rather than on the device so the store PC never needs write access to
+// the catalogue.
+//
+// Attribution rules, which matter commercially:
+//   - a figure for the shop's online godown is sellable stock
+//   - stock held in any OTHER godown is deliberately not counted, so the website can
+//     never sell a piece sitting on the counter's rack
+//   - stock Tally reports with no godown at all is recorded separately as needing
+//     allocation, rather than silently becoming either zero or sellable
+// ---------------------------------------------------------------------------
+async function applyStockReading(shopId: string, result: Record<string, unknown>) {
+  const items = Array.isArray(result?.items) ? (result.items as Record<string, unknown>[]) : [];
+  if (!items.length) return { applied: 0, note: 'no items in result' };
+
+  const { data: shop } = await db.from('shops').select('settings').eq('id', shopId).maybeSingle();
+  const onlineGodown = String(
+    (shop?.settings as Record<string, unknown> | null)?.online_godown || result.godown || ''
+  ).trim();
+
+  const matrix: Record<string, Record<string, number>> = {};
+  const unallocated: Record<string, number> = {};
+  let applied = 0;
+
+  for (const item of items) {
+    const name = String(item.name || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+
+    const godowns = (item.godowns || {}) as Record<string, number>;
+    matrix[key] = godowns;
+    if (Number(item.unallocated) > 0) unallocated[key] = Number(item.unallocated);
+
+    // Sellable only if it is in the shop's online godown.
+    const match = onlineGodown
+      ? Object.keys(godowns).find((g) => g.toLowerCase() === onlineGodown.toLowerCase())
+      : undefined;
+    const sellable = match !== undefined ? Number(godowns[match]) || 0 : 0;
+
+    const { error } = await db
+      .from('saree_catalog')
+      .update({ stock_quantity: Math.max(0, Math.round(sellable)), updated_at: new Date().toISOString() })
+      .or(`sku.eq.${name},tally_part_number.eq.${name}`)
+      .eq('shop_id', shopId);
+    if (!error) applied++;
+  }
+
+  // Keep the full picture alongside the sellable figure, so the dashboard can explain
+  // a zero ("40 in Tally, none in the online godown") instead of just showing nothing.
+  const stamp = new Date().toISOString();
+  await db.from('app_settings').upsert([
+    { key: 'tally_godown_stock_matrix', value: JSON.stringify(matrix), updated_at: stamp },
+    { key: 'tally_unallocated_stock', value: JSON.stringify(unallocated), updated_at: stamp },
+  ], { onConflict: 'key' });
+
+  return { applied, onlineGodown: onlineGodown || null, unallocatedItems: Object.keys(unallocated).length };
 }
 
 // ---------------------------------------------------------------------------
