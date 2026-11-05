@@ -425,19 +425,57 @@ async function readUnits() {
 /**
  * Create a unit of measure if it is missing.
  *
- * A fresh Tally company has NO units defined, so the first item was rejected with
- * "Unit 'Pcs' does not exist!". The godown and stock group were already provisioned;
- * the unit was the one prerequisite still assumed to be there.
+ * A unit is the one master whose NAME *is* its symbol, and Tally does not accept it
+ * in the same shape as a godown or a stock group. Sending the name as both an element
+ * attribute and a child made Tally read the attribute as an existing original name
+ * and answer "DUPLICATE ORIGINAL NAME" — on a company with no units at all.
+ *
+ * Tally's import schema for units is not documented dependably, so rather than ship
+ * one guess this tries the known forms in order and stops at the first Tally accepts.
+ * The form that worked is returned, so this list can shrink to one once the answer is
+ * known for the versions in the field.
  */
 async function ensureUnit(name) {
   const clean = String(name || '').trim();
   if (!clean) return { skipped: true };
-  return ensureMaster('unit', clean,
-    `<UNIT NAME="${escapeXml(clean)}" ACTION="Create">` +
-    `<NAME>${escapeXml(clean)}</NAME>` +
-    `<ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>` +
-    `<DECIMALPLACES>0</DECIMALPLACES>` +
-    `</UNIT>`);
+
+  // Most companies already have their units. Ask before writing, so an existing unit
+  // is never mistaken for a malformed request — and so a shop that has one is not
+  // broken by the attempts below.
+  const listed = async () => {
+    try {
+      const { units } = await readUnits();
+      return units.some((u) => u.toLowerCase().startsWith(clean.toLowerCase()));
+    } catch (_) {
+      return false;
+    }
+  };
+  if (await listed()) return { unit: clean, existed: true };
+
+  const n = escapeXml(clean);
+  const forms = [
+    // No attribute: the name is carried only by the child, so nothing can be mistaken
+    // for a rename of an existing unit.
+    ['plain', `<UNIT ACTION="Create"><NAME>${n}</NAME><ISSIMPLEUNIT>Yes</ISSIMPLEUNIT><DECIMALPLACES>0</DECIMALPLACES></UNIT>`],
+    // A name list, which is how Tally exports units.
+    ['name list', `<UNIT ACTION="Create"><NAME.LIST><NAME>${n}</NAME></NAME.LIST><ISSIMPLEUNIT>Yes</ISSIMPLEUNIT><DECIMALPLACES>0</DECIMALPLACES></UNIT>`],
+    // Attribute and child together, which is what godowns and stock groups accept.
+    ['attribute', `<UNIT NAME="${n}" ACTION="Create"><NAME>${n}</NAME><ISSIMPLEUNIT>Yes</ISSIMPLEUNIT><DECIMALPLACES>0</DECIMALPLACES></UNIT>`],
+  ];
+
+  const tried = [];
+  for (const [label, inner] of forms) {
+    const raw = await tally(importEnvelope(inner));
+    const out = importOutcome(raw);
+    if (out.ok) return { unit: clean, created: true, form: label };
+    if (/already exist/i.test(out.message || '')) return { unit: clean, existed: true, form: label };
+    tried.push(`${label}: ${out.message || 'no message'}`);
+  }
+
+  // A form may have landed even though Tally answered oddly, so confirm before failing.
+  if (await listed()) return { unit: clean, created: true, form: 'unreported' };
+
+  throw new Error(`could not create unit "${clean}" in Tally — ${tried.join(' | ')}`);
 }
 
 /**
