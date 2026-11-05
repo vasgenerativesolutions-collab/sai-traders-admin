@@ -334,9 +334,34 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     (shop?.settings as Record<string, unknown> | null)?.online_godown || result.godown || ''
   ).trim();
 
+  // Match in memory rather than with a PostgREST filter per item.
+  //
+  // The filter was `sku.eq.<name>`, which is case SENSITIVE: Tally reports
+  // SAI_SILK_02 while the catalogue row is Sai_silk_02, so the update matched nothing
+  // and 1500 units sat in Tally showing as zero online. SAI-SIK-02 only worked because
+  // its case happened to agree. The filter was also unescaped, so an item name holding
+  // a comma would corrupt it, and `%` or `_` would act as wildcards — and every SKU
+  // here contains an underscore.
+  const { data: catalogue } = await db
+    .from('saree_catalog')
+    .select('id, sku, tally_part_number, stock_quantity')
+    .eq('shop_id', shopId);
+
+  const byName = new Map<string, { id: string; stock_quantity: number }>();
+  for (const row of catalogue || []) {
+    const r = row as { id: string; sku: string | null; tally_part_number: string | null; stock_quantity: number | null };
+    const entry = { id: r.id, stock_quantity: Number(r.stock_quantity) || 0 };
+    for (const candidate of [r.sku, r.tally_part_number]) {
+      const k = String(candidate || '').trim().toLowerCase();
+      if (k && !byName.has(k)) byName.set(k, entry);
+    }
+  }
+
   const matrix: Record<string, Record<string, number>> = {};
   const unallocated: Record<string, number> = {};
+  const matched = new Set<string>();
   let applied = 0;
+  let unknown = 0;
 
   for (const item of items) {
     const name = String(item.name || '').trim();
@@ -351,38 +376,31 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     const match = onlineGodown
       ? Object.keys(godowns).find((g) => g.toLowerCase() === onlineGodown.toLowerCase())
       : undefined;
-    const sellable = match !== undefined ? Number(godowns[match]) || 0 : 0;
+    const sellable = Math.max(0, Math.round(match !== undefined ? Number(godowns[match]) || 0 : 0));
 
+    const row = byName.get(key);
+    if (!row) { unknown++; continue; } // in Tally, not in the catalogue — nothing to update
+    matched.add(row.id);
+
+    if (row.stock_quantity === sellable) { applied++; continue; } // already right
     const { error } = await db
       .from('saree_catalog')
-      .update({ stock_quantity: Math.max(0, Math.round(sellable)), updated_at: new Date().toISOString() })
-      .or(`sku.eq.${name},tally_part_number.eq.${name}`)
-      .eq('shop_id', shopId);
+      .update({ stock_quantity: sellable, updated_at: new Date().toISOString() })
+      .eq('id', row.id);
     if (!error) applied++;
   }
 
   // Items the catalogue lists but Tally no longer reports have no stock. A reading
   // always enumerates every stock item in the company — the godown argument does not
   // filter it — so absence is an answer, not a gap. Leaving the previous figure would
-  // offer for sale what Tally does not have: with one item in Tally the shop was still
-  // showing four as sellable.
+  // offer for sale what Tally does not have.
   //
   // This runs only for a non-empty reading. An empty one returns earlier precisely
   // because it cannot be told apart from a transient fault.
-  const seen = new Set(
-    items.map((i) => String(i.name || '').trim().toLowerCase()).filter(Boolean)
-  );
-  const { data: catalogue } = await db
-    .from('saree_catalog')
-    .select('id, sku, tally_part_number, stock_quantity')
-    .eq('shop_id', shopId)
-    .gt('stock_quantity', 0);
-
-  const absent = (catalogue || []).filter((row) => {
-    const sku = String(row.sku || '').trim().toLowerCase();
-    const part = String(row.tally_part_number || '').trim().toLowerCase();
-    return !(sku && seen.has(sku)) && !(part && seen.has(part));
-  }).map((row) => row.id);
+  const absent = (catalogue || [])
+    .map((row) => row as { id: string; stock_quantity: number | null })
+    .filter((row) => !matched.has(row.id) && (Number(row.stock_quantity) || 0) > 0)
+    .map((row) => row.id);
 
   let cleared = 0;
   if (absent.length) {
@@ -401,7 +419,7 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     { key: 'tally_unallocated_stock', value: JSON.stringify(unallocated), updated_at: stamp },
   ], { onConflict: 'key' });
 
-  return { applied, cleared, onlineGodown: onlineGodown || null, unallocatedItems: Object.keys(unallocated).length };
+  return { applied, cleared, unknown, onlineGodown: onlineGodown || null, unallocatedItems: Object.keys(unallocated).length };
 }
 
 // ---------------------------------------------------------------------------
@@ -460,6 +478,22 @@ async function heartbeat(body: Record<string, unknown>) {
   } else if (!reportedGuid) {
     identityOk = false;
     identityNote = 'no_company_open';
+  }
+
+  // Keep the company name current, not just at first sight. It was recorded only on
+  // registration, so a shop registered before the name was captured had none, and the
+  // dashboard had nothing to show but the boolean "a company is open".
+  if (identityOk && reportedGuid && tally.company) {
+    const storedName = String((shop?.settings as Record<string, unknown> | null)?.tally_company || '');
+    if (storedName !== String(tally.company)) {
+      await db.from('shops').update({
+        settings: {
+          ...((shop?.settings as Record<string, unknown>) || {}),
+          tally_guid: registeredGuid || reportedGuid,
+          tally_company: String(tally.company),
+        },
+      }).eq('id', device.shop_id);
+    }
   }
 
   // version held the one-time token handoff, which is cleared as soon as the token is

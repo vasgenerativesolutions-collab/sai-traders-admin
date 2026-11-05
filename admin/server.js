@@ -2049,51 +2049,82 @@ async function broadcastTallyHeartbeat(status = {}) {
 }
 
 // Query Supabase for in-store Tally heartbeat (used by Admin PC)
+/**
+ * Liveness of the store PC, as the agent reports it.
+ *
+ * This used to read app_settings.in_store_tally_status, written by the old store-PC
+ * supervisor. That supervisor no longer runs, so the key froze at its last value and
+ * the dashboard showed "Offline" permanently while the agent was healthy and syncing
+ * every two minutes. agent_devices is where liveness actually lives now.
+ */
 async function fetchRemoteTallyHeartbeat() {
   const now = Date.now();
   if (cachedRemoteTallyStatus && (now - lastRemoteTallyCheckTime < 4000)) {
     return cachedRemoteTallyStatus;
   }
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_settings?key=eq.in_store_tally_status&select=value,updated_at`, {
-      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-    });
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/agent_devices?select=device_name,last_seen_at,tally_reachable,company_loaded,godown_exists,shop_id` +
+      `&status=eq.active&revoked_at=is.null&order=last_seen_at.desc&limit=1`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+    );
     const rows = await res.json();
-    if (Array.isArray(rows) && rows.length > 0 && rows[0].value) {
-      let parsed = null;
-      try {
-        parsed = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
-      } catch (_e) {
-        parsed = rows[0].value;
-      }
-      if (parsed && typeof parsed === 'object') {
-        const lastSeenTime = new Date(parsed.updatedAt || rows[0].updated_at || parsed.lastSeen).getTime();
-        const ageMs = now - lastSeenTime;
-        const ageSec = Math.max(0, Math.round(ageMs / 1000));
-        if (ageMs < 90000) { // Active within last 90 seconds
-          cachedRemoteTallyStatus = {
-            ...parsed,
-            ageSeconds: ageSec,
-            isFresh: true
-          };
-          lastRemoteTallyCheckTime = now;
-          return cachedRemoteTallyStatus;
-        } else {
-          // Stale heartbeat (> 90 seconds old)
-          const minsAgo = Math.round(ageMs / 60000);
-          return {
-            ...parsed,
-            ageSeconds: ageSec,
-            isFresh: false,
-            lastSeenAgo: minsAgo > 60 ? `${Math.round(minsAgo / 60)}h ago` : `${minsAgo}m ago`
-          };
-        }
-      }
+    const device = Array.isArray(rows) ? rows[0] : null;
+    if (!device || !device.last_seen_at) return null;
+
+    const ageMs = now - new Date(device.last_seen_at).getTime();
+    const ageSec = Math.max(0, Math.round(ageMs / 1000));
+
+    // The device row records only THAT a company is open, not which one. The company
+    // name and GUID are the shop's registered identity, so they come from the shop.
+    let company = null;
+    let guid = null;
+    try {
+      const shopRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/shops?select=settings&id=eq.${device.shop_id}&limit=1`,
+        { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+      );
+      const shopRows = await shopRes.json();
+      const settings = (Array.isArray(shopRows) && shopRows[0] && shopRows[0].settings) || {};
+      company = settings.tally_company || null;
+      guid = settings.tally_guid || null;
+    } catch (_e) { /* the liveness answer does not depend on this */ }
+
+    // A healthy agent speaks every 30 seconds, so 90 is three missed beats.
+    const isFresh = ageMs < 90000;
+
+    // "Connected" means the shop PC is reachable AND Tally is answering with a company
+    // open. Anything less is reported distinctly, so the dashboard can say which half
+    // is missing instead of just "offline".
+    const status = {
+      connected: Boolean(isFresh && device.tally_reachable && device.company_loaded),
+      remoteStore: true,
+      storePcOnline: isFresh,
+      hostname: device.device_name || 'Store PC',
+      company,
+      guid,
+      targetGodown: device.godown_exists ? undefined : null,
+      latencyMs: null,
+      ageSeconds: ageSec,
+      isFresh,
+    };
+
+    if (!isFresh) {
+      const minsAgo = Math.round(ageMs / 60000);
+      status.lastSeenAgo = minsAgo > 60 ? `${Math.round(minsAgo / 60)}h ago` : `${minsAgo}m ago`;
+      status.notice = `The store PC last reported ${status.lastSeenAgo}. Start the agent on that PC.`;
+    } else if (!device.tally_reachable) {
+      status.notice = 'The store PC is connected, but TallyPrime is not answering on port 9000.';
+    } else if (!device.company_loaded) {
+      status.notice = 'The store PC is connected and Tally is running, but no company is open.';
     }
-  } catch (_e) {}
-  cachedRemoteTallyStatus = null;
-  lastRemoteTallyCheckTime = now;
-  return null;
+
+    cachedRemoteTallyStatus = status;
+    lastRemoteTallyCheckTime = now;
+    return status;
+  } catch (_err) {
+    return null;
+  }
 }
 
 // Dedicated background loop: Broadcaster on Store PC (pings local Tally every 10s and publishes heartbeat)

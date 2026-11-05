@@ -164,7 +164,7 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
   section('Stock');
   try {
     const [catalog, settings] = await Promise.all([
-      api('saree_catalog?select=sku,stock_quantity,status,is_active'),
+      api('saree_catalog?select=sku,tally_part_number,stock_quantity,status,is_active'),
       api('app_settings?key=in.(tally_godown_stock_matrix,tally_unallocated_stock)&select=key,value,updated_at'),
     ]);
     const live = catalog.filter((p) => p.is_active !== false && p.status !== 'deleted');
@@ -183,6 +183,30 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
     }
 
     console.log(`${C.dim}       ${sellable.length} of ${live.length} products are sellable online${C.off}`);
+
+    // Stock sitting in Tally under a name no product carries is invisible online and
+    // nothing reports it: 1500 units sat in the online godown as SAI-SILK-02 while the
+    // catalogue product was Sai_silk_02, and every surface said "working".
+    const matrix = parse(matrixRow && matrixRow.value) || {};
+    const known = new Set();
+    for (const p of catalog) {
+      for (const k of [p.sku, p.tally_part_number]) {
+        const v = String(k || '').trim().toLowerCase();
+        if (v) known.add(v);
+      }
+    }
+    const stranded = Object.entries(matrix)
+      .filter(([name, godowns]) => !known.has(name) &&
+        Object.values(godowns || {}).some((q) => Number(q) > 0));
+
+    if (stranded.length) {
+      note(`${stranded.length} item(s) hold stock in Tally under a name no product uses`,
+        'rename the item in Tally to match the SKU, or set that name as the product\'s Tally part number');
+      stranded.slice(0, 6).forEach(([name, godowns]) => {
+        const where = Object.entries(godowns).map(([g, q]) => `${q} in ${g}`).join(', ');
+        console.log(`${C.dim}         ${name} — ${where}${C.off}`);
+      });
+    }
 
     const needGodown = Object.entries(unalloc).filter(([, q]) => Number(q) > 0);
     if (needGodown.length) {
