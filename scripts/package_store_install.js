@@ -36,11 +36,10 @@ const SYNC_SPECS = [
   { type: 'file', src: 'TEST_TALLY_CONNECTION.bat', dest: 'TEST_TALLY_CONNECTION.bat' },
   { type: 'file', src: 'scripts/cloudflared.exe', dest: 'scripts/cloudflared.exe' },
   { type: 'file', src: 'scripts/get_tunnel_url.js', dest: 'scripts/get_tunnel_url.js' },
-  { type: 'file', src: 'scripts/delete_all_custom_godowns.js', dest: 'scripts/delete_all_custom_godowns.js' },
   { type: 'file', src: 'scripts/store_supervisor.js', dest: 'scripts/store_supervisor.js' },
+  { type: 'file', src: 'scripts/store_preflight.js', dest: 'scripts/store_preflight.js' },
   { type: 'file', src: 'scripts/stop_store_supervisor.js', dest: 'scripts/stop_store_supervisor.js' },
-  { type: 'file', src: 'scripts/test_tally_quick.js', dest: 'scripts/test_tally_quick.js' },
-  { type: 'file', src: 'scripts/alter_godown_to_primary.js', dest: 'scripts/alter_godown_to_primary.js' }
+  { type: 'file', src: 'scripts/test_tally_quick.js', dest: 'scripts/test_tally_quick.js' }
 ];
 
 function getFileHash(filePath) {

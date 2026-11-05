@@ -105,12 +105,39 @@ function requireStorefrontAuth(req, res, next) {
 // -----------------------------------------------------------------------------
 // Auth: Admin PIN & Session Security (SEC-01)
 // -----------------------------------------------------------------------------
-// Credentials are read from the environment with no literal fallbacks.
+// A fresh install seeds .env from .env.example, whose Supabase values are template
+// placeholders. Without this the server boots happily and then fails every single
+// request, which reads as 'the app is broken' rather than 'it has not been configured'.
+function isPlaceholderValue(v) {
+  const t = String(v || '').trim().toLowerCase();
+  if (!t) return true;
+  return t.startsWith('your') || t.startsWith('<') || t === 'changeme'
+    || t.includes('xxx') || t.includes('...');
+}
+const unconfigured = Object.entries({ SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY })
+  .filter(([, v]) => isPlaceholderValue(v))
+  .map(([k]) => k);
+if (unconfigured.length) {
+  console.error('');
+  console.error('================================================================');
+  console.error(' NOT CONFIGURED YET');
+  console.error('================================================================');
+  console.error(' These values in .env are still placeholders:');
+  unconfigured.forEach(k => console.error('   - ' + k));
+  console.error('');
+  console.error(' Edit .env in this folder, paste the real values, then start again.');
+  console.error(' Find them in Supabase: Project Settings -> API.');
+  console.error('================================================================');
+  console.error('');
+}
+
+// The storefront API key is read from the environment with no literal fallback. It
+// previously defaulted to a value identical to the live .env and committed in source.
 //
-// These previously defaulted to 'sai2026', 'sec_adm_sess_…' and
-// 'sai_store_live_sec_892176' — values identical to the live .env, committed in source.
-// The session secret is the HMAC key for admin session tokens, so anyone holding the
-// source could forge an admin session without knowing the PIN.
+// There is deliberately no admin PIN. The dashboard authenticates with Supabase email
+// and password; the PIN only ever gated POST /api/admin/login, which no client called,
+// and requiring it stopped a fresh install from booting at all.
+//
 // Comma-separated so a key can be rotated with no storefront downtime: put the new
 // key first, leave the old one in place until every caller has moved, then drop it.
 // The first entry is the primary; any other accepted key logs a deprecation warning
@@ -118,17 +145,6 @@ function requireStorefrontAuth(req, res, next) {
 const STOREFRONT_API_KEYS = String(env.STOREFRONT_API_KEY || process.env.STOREFRONT_API_KEY || '')
   .split(',').map(k => k.trim()).filter(Boolean);
 const STOREFRONT_API_KEY = STOREFRONT_API_KEYS[0] || '';
-const ADMIN_PIN = (env.ADMIN_PIN || process.env.ADMIN_PIN || '').trim();
-
-// A random per-boot secret is strictly better than a known one: sessions die on restart,
-// but no key is ever committed. A missing PIN, by contrast, cannot be defaulted safely.
-const ADMIN_SESSION_SECRET = (env.ADMIN_SESSION_SECRET || process.env.ADMIN_SESSION_SECRET || '').trim()
-  || crypto.randomBytes(32).toString('hex');
-
-if (!ADMIN_PIN) {
-  console.error('FATAL: ADMIN_PIN is not set. Refusing to start with no admin credential.');
-  process.exit(1);
-}
 if (!STOREFRONT_API_KEY) {
   console.warn('[Startup] STOREFRONT_API_KEY is not set — storefront order endpoints will reject all callers.');
 }
@@ -140,24 +156,7 @@ function getCookie(req, name) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-function generateAdminSessionToken() {
-  const ts = Date.now();
-  const sig = crypto.createHmac('sha256', ADMIN_SESSION_SECRET).update('admin:' + ts).digest('hex');
-  return `${ts}.${sig}`;
-}
 
-function verifyAdminSessionToken(token) {
-  if (!token || typeof token !== 'string') return false;
-  const parts = token.split('.');
-  if (parts.length !== 2) return false;
-  const [tsStr, sig] = parts;
-  const ts = parseInt(tsStr, 10);
-  if (isNaN(ts) || Date.now() - ts > 7 * 24 * 60 * 60 * 1000) return false; // 7-day TTL
-  const expectedSig = crypto.createHmac('sha256', ADMIN_SESSION_SECRET).update('admin:' + ts).digest('hex');
-  const bufA = Buffer.from(sig);
-  const bufB = Buffer.from(expectedSig);
-  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
-}
 
 // 'local'  — the Store PC / a dev machine. The loopback convenience path is allowed,
 //            because being at that keyboard already implies physical access.
@@ -202,15 +201,8 @@ async function requireAdminAuth(req, res, next) {
       return next();
     }
 
-    // 3. Admin PIN session token (HMAC, issued by POST /api/admin/login).
-    //    Checked before Supabase so a PIN login works from any origin, which is what
-    //    lets the dashboard be served from somewhere other than the Store PC itself.
-    if (verifyAdminSessionToken(token)) {
-      req.user = { id: 'admin_pin_session', email: MASTER_ADMIN_EMAIL_DEFAULT, role: 'admin' };
-      return next();
-    }
 
-    // 4. Supabase Auth JWT Verification
+    // 3. Supabase Auth JWT Verification — the only interactive login path.
     try {
       const { data, error } = await supabaseAuth.auth.getUser(token);
       if (data && data.user) {
@@ -722,22 +714,6 @@ app.use('/api-test', express.static(path.resolve(__dirname, '..', 'api test')));
 // -----------------------------------------------------------------------------
 // Admin PIN Login, Session Check & Logout (SEC-01)
 // -----------------------------------------------------------------------------
-app.post('/api/admin/login', (req, res) => {
-  const { pin } = req.body || {};
-  if (!pin || pin.trim() !== ADMIN_PIN) {
-    return res.status(401).json({ success: false, error: 'Invalid Admin PIN' });
-  }
-  const token = generateAdminSessionToken();
-  // A hosted dashboard is a different origin from this server, and a SameSite=Lax
-  // cookie is never sent on a cross-site request. Browsers only accept SameSite=None
-  // over HTTPS, so fall back to Lax when serving plain HTTP on the shop LAN.
-  const crossSite = DEPLOYMENT_MODE === 'hosted' || req.secure || req.headers['x-forwarded-proto'] === 'https';
-  const cookieAttrs = crossSite
-    ? 'Path=/; HttpOnly; Secure; SameSite=None; Max-Age=604800'
-    : 'Path=/; HttpOnly; SameSite=Lax; Max-Age=604800';
-  res.setHeader('Set-Cookie', `admin_session=${token}; ${cookieAttrs}`);
-  return res.json({ success: true, token });
-});
 
 app.get('/api/auth/supabase-config', (req, res) => {
   res.json({
