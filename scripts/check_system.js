@@ -164,7 +164,7 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
   section('Stock');
   try {
     const [catalog, settings] = await Promise.all([
-      api('saree_catalog?select=sku,tally_part_number,stock_quantity,status,is_active'),
+      api('saree_catalog?select=sku,tally_part_number,stock_quantity,status,is_active,created_by'),
       api('app_settings?key=in.(tally_godown_stock_matrix,tally_unallocated_stock)&select=key,value,updated_at'),
     ]);
     const live = catalog.filter((p) => p.is_active !== false && p.status !== 'deleted');
@@ -200,12 +200,22 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
         Object.values(godowns || {}).some((q) => Number(q) > 0));
 
     if (stranded.length) {
-      note(`${stranded.length} item(s) hold stock in Tally under a name no product uses`,
-        'rename the item in Tally to match the SKU, or set that name as the product\'s Tally part number');
+      bad(`${stranded.length} item(s) hold stock in Tally with no product at all`,
+        'a product should have been created automatically — check the agent-sync logs');
       stranded.slice(0, 6).forEach(([name, godowns]) => {
         const where = Object.entries(godowns).map(([g, q]) => `${q} in ${g}`).join(', ');
         console.log(`${C.dim}         ${name} — ${where}${C.off}`);
       });
+    }
+
+    // Items the shop created in Tally become draft products. They are not sellable
+    // until someone adds a price and photos, so they are work waiting on a human —
+    // worth saying once, not a fault.
+    const drafts = catalog.filter((p) => p.created_by === 'agent' && p.status !== 'listed');
+    if (drafts.length) {
+      note(`${drafts.length} product(s) came from Tally and need details before they can sell`,
+        'open each in the dashboard and add a price and photos, then list it');
+      drafts.slice(0, 6).forEach((p) => console.log(`${C.dim}         ${p.sku} — ${p.stock_quantity} in stock, no price yet${C.off}`));
     }
 
     const needGodown = Object.entries(unalloc).filter(([, q]) => Number(q) > 0);

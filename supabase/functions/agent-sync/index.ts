@@ -403,7 +403,7 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
   const unallocated: Record<string, number> = {};
   const matched = new Set<string>();
   let applied = 0;
-  let unknown = 0;
+  const unmatched: { name: string; sellable: number }[] = [];
 
   for (const item of items) {
     const name = String(item.name || '').trim();
@@ -421,7 +421,7 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     const sellable = Math.max(0, Math.round(match !== undefined ? Number(godowns[match]) || 0 : 0));
 
     const row = byName.get(key);
-    if (!row) { unknown++; continue; } // in Tally, not in the catalogue — nothing to update
+    if (!row) { unmatched.push({ name, sellable }); continue; } // in Tally, no product yet
     matched.add(row.id);
 
     if (row.stock_quantity === sellable) { applied++; continue; } // already right
@@ -430,6 +430,46 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
       .update({ stock_quantity: sellable, updated_at: new Date().toISOString() })
       .eq('id', row.id);
     if (!error) applied++;
+  }
+
+  // An item the shop created in Tally has no product yet, and that is the normal way
+  // this works: stock is entered in Tally, not in the web catalogue. Leaving it
+  // unmatched meant stock existed in the online godown that the shop could never sell
+  // and nothing reported — 1500 units sat invisible under a name no product used.
+  //
+  // So a product is created for it, as a DRAFT the owner completes. It cannot be sold
+  // in that state: customer search requires is_active and status 'listed', and also an
+  // embedding, which a new draft has none of. Price stays 0 deliberately — an
+  // unpriced saree must never be offerable.
+  //
+  // sku and tally_part_number are both unique, so this cannot duplicate a product.
+  let drafted = 0;
+  if (unmatched.length) {
+    const now = new Date().toISOString();
+    const { error } = await db.from('saree_catalog').upsert(
+      unmatched.map(({ name, sellable }) => ({
+        shop_id: shopId,
+        sku: name,
+        tally_part_number: name,
+        name,
+        fabric: 'Unspecified',
+        color_primary: 'Unspecified',
+        price: 0,
+        stock_quantity: sellable,
+        is_active: false,
+        status: 'draft',
+        item_created_in_tally: true,
+        stock_added_in_tally: sellable > 0,
+        tally_master_id: name,
+        tally_created_at: now,
+        tally_last_seen_at: now,
+        created_by: 'agent',
+        listing_notes: 'Created in TallyPrime at the shop. Add a price, photos and details, then list it.',
+      })),
+      { onConflict: 'sku', ignoreDuplicates: true }
+    );
+    if (!error) drafted = unmatched.length;
+    else console.error('[agent-sync] could not draft new Tally items:', error.message);
   }
 
   // Items the catalogue lists but Tally no longer reports have no stock. A reading
@@ -461,7 +501,7 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     { key: 'tally_unallocated_stock', value: JSON.stringify(unallocated), updated_at: stamp },
   ], { onConflict: 'key' });
 
-  return { applied, cleared, unknown, onlineGodown: onlineGodown || null, unallocatedItems: Object.keys(unallocated).length };
+  return { applied, cleared, drafted, onlineGodown: onlineGodown || null, unallocatedItems: Object.keys(unallocated).length };
 }
 
 // ---------------------------------------------------------------------------
