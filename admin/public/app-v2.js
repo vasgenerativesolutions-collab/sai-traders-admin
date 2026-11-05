@@ -213,6 +213,22 @@ async function loadSystemStatus() {
     const data = await res.json();
     if (!data.success) return;
 
+    // Which store this is, from live status rather than localStorage.
+    //
+    // The header badge was read from a sai_active_store blob cached in the browser, so
+    // it kept showing the hostname of a PC paired long ago — AISHWARYA — while the shop
+    // was in fact running SYED on a PC called SK. A name nobody can correct by using
+    // the product is worse than no name.
+    if (!window.isDeviceLocked) {
+      const liveName = (data.tally && (data.tally.company || data.tally.shopName)) || null;
+      const storeBadge = document.getElementById('activeStoreHeaderBadge');
+      if (storeBadge && liveName) storeBadge.innerText = liveName;
+
+      const godownBadge = document.getElementById('activeGodownBadge');
+      const liveGodown = data.tally && data.tally.targetGodown;
+      if (godownBadge && liveGodown) godownBadge.innerText = liveGodown;
+    }
+
     // Tally Indicator
     const tallyDot = document.getElementById('tallyDot');
     const tallyText = document.getElementById('tallyStatusText');

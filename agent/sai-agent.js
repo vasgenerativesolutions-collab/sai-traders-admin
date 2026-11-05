@@ -249,7 +249,7 @@ async function readGodownBalances(godownName) {
   // whatever company happened to be open would be written into the shop's catalogue.
   const company = await readCompany().catch(() => null);
 
-  const raw = await tally(collection('SI', 'StockItem', 'Name,Parent,ClosingBalance,BatchAllocations.*'), 25000);
+  const raw = await tally(collection('SI', 'StockItem', 'Name,Parent,ClosingBalance,ClosingRate,BatchAllocations.*'), 25000);
   if (typeof raw !== 'string' || !raw) throw new Error('Tally returned no response');
   const items = [];
   for (const m of raw.matchAll(/<STOCKITEM NAME="([^"]+)"[^>]*>([\s\S]*?)<\/STOCKITEM>/gi)) {
@@ -258,6 +258,12 @@ async function readGodownBalances(godownName) {
     const closingRaw = tag(body, 'CLOSINGBALANCE');
     const num = closingRaw.match(/-?[0-9.]+/);
     const closing = num ? parseFloat(num[0]) : 0;
+
+    // Tally gives the rate as "2500.00/Pcs". An item the shop created in Tally has a
+    // rate there and nowhere else, which is why a new product arrived with no price.
+    const rateRaw = tag(body, 'CLOSINGRATE');
+    const rateNum = rateRaw.match(/-?[0-9.]+/);
+    const rate = rateNum ? parseFloat(rateNum[0]) : 0;
 
     const holders = {};
     for (const b of body.matchAll(/<BATCHALLOCATIONS\.LIST[^>]*>([\s\S]*?)<\/BATCHALLOCATIONS\.LIST>/gi)) {
@@ -291,6 +297,8 @@ async function readGodownBalances(godownName) {
       name,
       group: tag(body, 'PARENT'),
       closing,
+      rate,
+      rateRaw: rateRaw || null,
       closingRaw: closingRaw || null,
       godowns: perGodown,
       unallocated: Math.max(0, Math.round(closing - placed)),

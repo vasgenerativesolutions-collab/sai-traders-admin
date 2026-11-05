@@ -2129,15 +2129,18 @@ async function fetchRemoteTallyHeartbeat() {
     // name and GUID are the shop's registered identity, so they come from the shop.
     let company = null;
     let guid = null;
+    let shopName = null;
+    let settings = {};
     try {
       const shopRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/shops?select=settings&id=eq.${device.shop_id}&limit=1`,
+        `${SUPABASE_URL}/rest/v1/shops?select=name,settings&id=eq.${device.shop_id}&limit=1`,
         { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
       );
       const shopRows = await shopRes.json();
-      const settings = (Array.isArray(shopRows) && shopRows[0] && shopRows[0].settings) || {};
+      settings = (Array.isArray(shopRows) && shopRows[0] && shopRows[0].settings) || {};
       company = settings.tally_company || null;
       guid = settings.tally_guid || null;
+      shopName = (Array.isArray(shopRows) && shopRows[0] && shopRows[0].name) || null;
     } catch (_e) { /* the liveness answer does not depend on this */ }
 
     // A healthy agent speaks every 30 seconds, so 90 is three missed beats.
@@ -2153,7 +2156,8 @@ async function fetchRemoteTallyHeartbeat() {
       hostname: device.device_name || 'Store PC',
       company,
       guid,
-      targetGodown: device.godown_exists ? undefined : null,
+      targetGodown: settings.online_godown || null,
+      shopName: shopName || null,
       latencyMs: null,
       ageSeconds: ageSec,
       isFresh,

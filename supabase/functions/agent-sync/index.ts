@@ -403,7 +403,7 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
   const unallocated: Record<string, number> = {};
   const matched = new Set<string>();
   let applied = 0;
-  const unmatched: { name: string; sellable: number }[] = [];
+  const unmatched: { name: string; sellable: number; rate: number }[] = [];
 
   for (const item of items) {
     const name = String(item.name || '').trim();
@@ -421,14 +421,18 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     const sellable = Math.max(0, Math.round(match !== undefined ? Number(godowns[match]) || 0 : 0));
 
     const row = byName.get(key);
-    if (!row) { unmatched.push({ name, sellable }); continue; } // in Tally, no product yet
+    const tallyRate = Math.max(0, Number(item.rate) || 0);
+    if (!row) { unmatched.push({ name, sellable, rate: tallyRate }); continue; } // in Tally, no product yet
     matched.add(row.id);
 
-    if (row.stock_quantity === sellable) { applied++; continue; } // already right
-    const { error } = await db
-      .from('saree_catalog')
-      .update({ stock_quantity: sellable, updated_at: new Date().toISOString() })
-      .eq('id', row.id);
+    // Tally's rate is recorded for reference, but an existing product's price is never
+    // overwritten — that figure is the owner's decision, not Tally's.
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (row.stock_quantity !== sellable) patch.stock_quantity = sellable;
+    if (tallyRate > 0) patch.tally_rate = tallyRate;
+    if (Object.keys(patch).length === 1) { applied++; continue; } // nothing to change
+
+    const { error } = await db.from('saree_catalog').update(patch).eq('id', row.id);
     if (!error) applied++;
   }
 
@@ -447,14 +451,18 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
   if (unmatched.length) {
     const now = new Date().toISOString();
     const { error } = await db.from('saree_catalog').upsert(
-      unmatched.map(({ name, sellable }) => ({
+      unmatched.map(({ name, sellable, rate }) => ({
         shop_id: shopId,
         sku: name,
         tally_part_number: name,
         name,
         fabric: 'Unspecified',
         color_primary: 'Unspecified',
-        price: 0,
+        // The rate the shop typed in Tally is the only price this item has, so it
+        // starts there rather than at zero. It is still pending_review and not
+        // sellable, so a person confirms the figure before a customer can see it.
+        price: rate > 0 ? rate : 0,
+        tally_rate: rate > 0 ? rate : null,
         stock_quantity: sellable,
         is_active: false,
         status: 'pending_review',
