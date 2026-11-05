@@ -14,7 +14,9 @@
     "add-tally-products": "node scripts/add_products_to_tally.js",
     "reembed": "node scripts/reembed_catalog_v2.js",
     "package:store": "node scripts/package_store_install.js",
-    "eval": "node eval/run_eval.js"
+    "eval": "node eval/run_eval.js",
+    "check": "node scripts/check_system.js",
+    "preflight": "node scripts/store_preflight.js"
   },
   "build": {
     "appId": "com.saitraders.bridge",
