@@ -244,6 +244,11 @@ async function readCompany() {
  * batch quantity as current stock is what previously made a reported 11 out of a real 9.
  */
 async function readGodownBalances(godownName) {
+  // Which company this came from, read as part of the same reading. The cloud refuses
+  // a reading from a company the shop is not registered to — without this the stock of
+  // whatever company happened to be open would be written into the shop's catalogue.
+  const company = await readCompany().catch(() => null);
+
   const raw = await tally(collection('SI', 'StockItem', 'Name,Parent,ClosingBalance,BatchAllocations.*'), 25000);
   if (typeof raw !== 'string' || !raw) throw new Error('Tally returned no response');
   const items = [];
@@ -294,7 +299,12 @@ async function readGodownBalances(godownName) {
         : null,
     });
   }
-  return { godown: godownName || null, itemCount: items.length, items };
+  return {
+    godown: godownName || null,
+    company: company ? { name: company.name, guid: company.guid } : null,
+    itemCount: items.length,
+    items,
+  };
 }
 
 
@@ -987,8 +997,21 @@ async function main() {
           const reading = await readGodownBalances(null);
           const res = await callCloud('sync', { deviceToken: token, result: reading });
           const eff = res.body && res.body.effect;
-          log(`stock synced — ${reading.itemCount} item(s)` +
-              (eff ? `, ${eff.applied} updated` + (eff.unallocatedItems ? `, ${eff.unallocatedItems} need a godown` : '') : ''));
+
+          // The cloud refuses a reading from a company this shop is not registered to.
+          // Say so plainly: the shopkeeper has the wrong company open, and silence here
+          // looks exactly like everything working.
+          if (eff && eff.refused) {
+            warn(`the cloud refused this reading: ${eff.refused}`);
+            warn(`this shop is registered to company ${eff.expectedGuid || 'another GUID'}`);
+            warn(`Tally currently has ${reading.company ? reading.company.name : 'no company'} open`);
+            warn('open the registered company in Tally — nothing will sync until then');
+          } else {
+            log(`stock synced — ${reading.itemCount} item(s)` +
+                (eff ? `, ${eff.applied} updated` +
+                  (eff.cleared ? `, ${eff.cleared} cleared` : '') +
+                  (eff.unallocatedItems ? `, ${eff.unallocatedItems} need a godown` : '') : ''));
+          }
         } catch (err) {
           warn(`stock sync: ${err.message}`);
         }

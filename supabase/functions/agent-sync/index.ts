@@ -55,7 +55,7 @@ async function authenticate(deviceToken: unknown) {
   const hash = await hashToken(deviceToken);
   const { data, error } = await db
     .from('agent_devices')
-    .select('id, shop_id, device_name, status, revoked_at')
+    .select('id, shop_id, device_name, status, revoked_at, company_loaded')
     .eq('credential_hash', hash)
     .maybeSingle();
   if (error || !data) return null;
@@ -215,11 +215,38 @@ async function approve(req: Request, body: Record<string, unknown>) {
 // One job at a time, marked in_progress with locked_at, so a restart mid-job does not
 // lose it and two devices cannot pick up the same work.
 // ---------------------------------------------------------------------------
+/**
+ * The company a shop is registered to, and whether a device is currently looking at it.
+ *
+ * A shop is bound to one Tally company by GUID on first sight. Nothing enforced that
+ * afterwards: sync applied whatever reading arrived, so opening a different company on
+ * the shop PC would have written that company's stock straight into this shop's
+ * catalogue, and jobs would have posted vouchers into someone else's books.
+ */
+async function registeredGuidFor(shopId: string): Promise<string> {
+  const { data: shop } = await db.from('shops').select('settings').eq('id', shopId).maybeSingle();
+  return String((shop?.settings as Record<string, unknown> | null)?.tally_guid || '').trim();
+}
+
+/** Mismatch reason, or null when the company is the right one. */
+function companyRefusal(registered: string, reported: string): string | null {
+  if (!registered) return null;             // not yet bound — first sight registers it
+  if (!reported) return 'no_company_open';  // cannot prove which company this came from
+  if (reported.toLowerCase() !== registered.toLowerCase()) return 'guid_mismatch';
+  return null;
+}
+
 async function claim(body: Record<string, unknown>) {
   const device = await authenticate(body.deviceToken);
   if (!device) return json({ error: 'unauthorized' }, 401);
 
   await db.from('agent_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', device.id);
+
+  // Hand out no work while this PC is looking at the wrong company. A write would land
+  // in the wrong company's books, which is far worse than not writing at all.
+  const registered = await registeredGuidFor(device.shop_id);
+  const refusal = companyRefusal(registered, String(device.company_loaded || '').trim());
+  if (refusal) return json({ job: null, refused: refusal });
 
   const { data: jobs } = await db
     .from('agent_jobs')
@@ -284,7 +311,7 @@ async function report(body: Record<string, unknown>) {
   let effect: unknown = null;
   if (!failed && job.type === 'read_godown_balances' && body.result) {
     try {
-      effect = await applyStockReading(device.shop_id, body.result as Record<string, unknown>);
+      effect = await applyStockReading(device.shop_id, body.result as Record<string, unknown>, String(device.company_loaded || ''));
     } catch (err) {
       console.error('[agent-sync] applying stock reading failed:', err);
       effect = { error: String(err instanceof Error ? err.message : err) };
@@ -309,8 +336,23 @@ async function report(body: Record<string, unknown>) {
 //   - stock Tally reports with no godown at all is recorded separately as needing
 //     allocation, rather than silently becoming either zero or sellable
 // ---------------------------------------------------------------------------
-async function applyStockReading(shopId: string, result: Record<string, unknown>) {
+async function applyStockReading(shopId: string, result: Record<string, unknown>, deviceGuid = '') {
   const items = Array.isArray(result?.items) ? (result.items as Record<string, unknown>[]) : [];
+
+  // A reading carries the company it was taken from. Both sync and report land here,
+  // so this is the one place the check cannot be skipped. Without it, a different
+  // company open on the shop PC would overwrite this shop's catalogue with its stock.
+  // A reading names its own company. An agent from before that change does not, so
+  // the GUID its heartbeat recorded seconds earlier stands in — weaker, but it still
+  // catches a shop PC pointed at the wrong company instead of trusting it blindly.
+  const reportedGuid = String(
+    (result.company as Record<string, unknown> | undefined)?.guid || result.companyGuid || deviceGuid || ''
+  ).trim();
+  const registered = await registeredGuidFor(shopId);
+  const refusal = companyRefusal(registered, reportedGuid);
+  if (refusal) {
+    return { applied: 0, refused: refusal, expectedGuid: registered || null, reportedGuid: reportedGuid || null };
+  }
 
   // A company with no stock items is a real answer, not a non-event. Returning early
   // left the last-read timestamp frozen, so the dashboard reported stock as hours
@@ -435,13 +477,14 @@ async function syncStock(body: Record<string, unknown>) {
   const result = (body.result || {}) as Record<string, unknown>;
   if (!Array.isArray(result.items)) return json({ error: 'items_required' }, 400);
 
+  // Do not assert a company here: this would overwrite the GUID the heartbeat
+  // recorded with a bare "true", and that GUID is what claim checks against.
   await db.from('agent_devices').update({
     last_seen_at: new Date().toISOString(),
     tally_reachable: true,
-    company_loaded: true,
   }).eq('id', device.id);
 
-  const effect = await applyStockReading(device.shop_id, result);
+  const effect = await applyStockReading(device.shop_id, result, String(device.company_loaded || ''));
   return json({ ok: true, effect });
 }
 
@@ -501,7 +544,7 @@ async function heartbeat(body: Record<string, unknown>) {
   const patch: Record<string, unknown> = {
     last_seen_at: new Date().toISOString(),
     tally_reachable: Boolean(tally.reachable),
-    company_loaded: Boolean(reportedGuid),
+    company_loaded: reportedGuid || null,
     godown_exists: Boolean(tally.godownExists),
   };
   if (body.agentVersion) patch.version = String(body.agentVersion).slice(0, 40);
