@@ -386,13 +386,18 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
   // here contains an underscore.
   const { data: catalogue } = await db
     .from('saree_catalog')
-    .select('id, sku, tally_part_number, stock_quantity')
+    .select('id, sku, tally_part_number, stock_quantity, status, price')
     .eq('shop_id', shopId);
 
   const byName = new Map<string, { id: string; stock_quantity: number }>();
   for (const row of catalogue || []) {
     const r = row as { id: string; sku: string | null; tally_part_number: string | null; stock_quantity: number | null };
-    const entry = { id: r.id, stock_quantity: Number(r.stock_quantity) || 0 };
+    const entry = {
+      id: r.id,
+      stock_quantity: Number(r.stock_quantity) || 0,
+      status: r.status,
+      price: Number(r.price) || 0,
+    };
     for (const candidate of [r.sku, r.tally_part_number]) {
       const k = String(candidate || '').trim().toLowerCase();
       if (k && !byName.has(k)) byName.set(k, entry);
@@ -430,6 +435,14 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (row.stock_quantity !== sellable) patch.stock_quantity = sellable;
     if (tallyRate > 0) patch.tally_rate = tallyRate;
+
+    // Fill the price only while it is still unset and the product is awaiting review.
+    // That is not overwriting anyone's decision — there is no decision yet, and a
+    // product drafted before the rate was being read would otherwise sit at zero for
+    // ever. Once a person has priced it, Tally never moves that figure again.
+    if (row.status === 'pending_review' && row.price <= 0 && tallyRate > 0) {
+      patch.price = tallyRate;
+    }
     if (Object.keys(patch).length === 1) { applied++; continue; } // nothing to change
 
     const { error } = await db.from('saree_catalog').update(patch).eq('id', row.id);

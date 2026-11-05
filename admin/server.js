@@ -3557,15 +3557,20 @@ app.get('/api/status', async (req, res) => {
       // 2. Local Tally is offline (normal on Admin PC). Check Cloud Heartbeat from Store PC!
       const remoteHb = await fetchRemoteTallyHeartbeat();
       if (remoteHb) {
+        // Names come from the shop's own registration. A hardcoded fallback — this
+        // branch said 'AISHWARYA', a PC paired long ago — puts a name on screen that
+        // nobody can correct by using the product, and it outlives the thing it named.
         if (remoteHb.isFresh && remoteHb.connected) {
           tallyStatus = {
             connected: true,
             remoteStore: true,
             latencyMs: remoteHb.latencyMs || null,
-            company: remoteHb.company || 'Sai Traders ERP',
+            company: remoteHb.company || null,
             guid: remoteHb.guid || null,
-            hostname: remoteHb.hostname || 'Store PC',
-            godown: remoteHb.godown || '',
+            hostname: remoteHb.hostname || null,
+            shopName: remoteHb.shopName || null,
+            godown: remoteHb.targetGodown || '',
+            targetGodown: remoteHb.targetGodown || null,
             itemCount: remoteHb.itemCount || 0,
             lastSeen: remoteHb.updatedAt,
             ageSeconds: remoteHb.ageSeconds,
@@ -3577,8 +3582,11 @@ app.get('/api/status', async (req, res) => {
             connected: false,
             remoteStore: true,
             storePcOnline: true,
-            hostname: remoteHb.hostname || 'Store PC',
-            notice: remoteHb.error || 'Store PC is connected, but Tally is waiting on port 9000 or no company is open',
+            hostname: remoteHb.hostname || null,
+            shopName: remoteHb.shopName || null,
+            company: remoteHb.company || null,
+            targetGodown: remoteHb.targetGodown || null,
+            notice: remoteHb.notice || remoteHb.error || 'The store PC is connected, but Tally is not answering on port 9000 or no company is open.',
             lastSeen: remoteHb.updatedAt
           };
         } else {
@@ -3586,8 +3594,11 @@ app.get('/api/status', async (req, res) => {
             connected: false,
             remoteStore: false,
             storePcOnline: false,
-            hostname: remoteHb.hostname || 'AISHWARYA',
-            notice: `Store PC last seen ${remoteHb.lastSeenAgo || 'a while ago'}. Please ensure START_STORE_PC.bat is running on Store PC.`,
+            hostname: remoteHb.hostname || null,
+            shopName: remoteHb.shopName || null,
+            company: remoteHb.company || null,
+            notice: remoteHb.notice
+              || `The store PC last reported ${remoteHb.lastSeenAgo || 'a while ago'}. Start the agent on that PC.`,
             lastSeen: remoteHb.updatedAt
           };
         }
@@ -6235,7 +6246,7 @@ app.get('/api/admin/tally-identity', async (req, res) => {
       remoteCheck = {
         companyName: remoteHb.company,
         guid: remoteHb.guid,
-        hostname: remoteHb.hostname || 'AISHWARYA',
+        hostname: remoteHb.hostname || null,
         isRemote: true
       };
     }
@@ -6276,6 +6287,10 @@ app.get('/api/admin/tally-identity', async (req, res) => {
     const activeCheck = localCheck || remoteCheck;
     const localHost = os.hostname();
 
+    // The agent's registered device name, which is what makes "is this the store PC"
+    // answerable without naming a machine in the source.
+    const storePcName = String(remoteHb?.hostname || remoteGwInfo?.hostname || '').trim().toUpperCase();
+
     res.json({
       success: true,
       registered: identity || null,
@@ -6284,14 +6299,14 @@ app.get('/api/admin/tally-identity', async (req, res) => {
         guid: activeCheck.guid,
         matchesRegistered: identity ? (activeCheck.guid === identity.guid) : true,
         isRemote: Boolean(remoteCheck),
-        hostname: activeCheck.hostname || (localCheck ? localHost : 'AISHWARYA'),
+        hostname: activeCheck.hostname || (localCheck ? localHost : null),
         gatewayUrl: activeCheck.gatewayUrl || null
       } : (identity ? {
         companyName: identity.companyName,
         guid: identity.guid,
         matchesRegistered: true,
         isRemote: true,
-        hostname: identity.hostname || 'AISHWARYA',
+        hostname: identity.hostname || null,
         gatewayUrl: null
       } : null),
       isVerified: Boolean(identity),
@@ -6299,12 +6314,16 @@ app.get('/api/admin/tally-identity', async (req, res) => {
       remoteStoreConnected: Boolean(remoteCheck || remoteHb?.connected),
       remoteGwOnline: Boolean(remoteGwInfo?.isOnline || remoteHb?.isFresh),
       remoteGwDetected: Boolean(remoteGwInfo || remoteHb),
-      remoteHostname: remoteGwInfo?.hostname || remoteCheck?.hostname || remoteHb?.hostname || 'AISHWARYA',
+      remoteHostname: remoteGwInfo?.hostname || remoteCheck?.hostname || remoteHb?.hostname || null,
       remoteGatewayUrl: remoteGwInfo?.publicUrl || remoteCheck?.gatewayUrl || null,
       currentDevice: {
         hostname: localHost,
-        isLaptop: localHost.toUpperCase() === 'MITHUN',
-        isStorePc: localHost.toUpperCase() === 'AISHWARYA'
+        // Which machine is the store PC is a fact about this shop's registration, not a
+        // name compiled into the source. 'AISHWARYA' and 'MITHUN' were hardcoded here,
+        // so the answer was wrong at every other shop and stayed wrong the moment a PC
+        // was replaced — the agent's registered device name is the real answer.
+        isStorePc: Boolean(storePcName) && localHost.toUpperCase() === storePcName,
+        isLaptop: !(Boolean(storePcName) && localHost.toUpperCase() === storePcName)
       }
     });
   } catch (err) {
