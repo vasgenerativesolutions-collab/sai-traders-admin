@@ -60,7 +60,7 @@ export async function verifyWhatsAppSignature(
 }
 
 // -----------------------------------------------------------------------------
-// Live Dynamic WhatsApp Credentials Resolver (reads Supabase app_settings table)
+// WhatsApp credentials, from this function's secrets.
 // -----------------------------------------------------------------------------
 let cachedToken: string | null = null;
 let cachedPhoneId: string | null = null;
@@ -68,35 +68,22 @@ let lastCredentialFetch = 0;
 
 export async function resolveWhatsAppCredentials(): Promise<{ token: string; phoneId: string }> {
   const now = Date.now();
-  // Fast cache for 5 seconds to reduce DB roundtrips during bursts, but stay live
   if (cachedToken && cachedPhoneId && now - lastCredentialFetch < 5000) {
     return { token: cachedToken, phoneId: cachedPhoneId };
   }
 
-  // 1. Try reading live dynamically from Supabase app_settings
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (supabaseUrl && serviceKey) {
-      const res = await fetch(`${supabaseUrl}/rest/v1/app_settings?select=key,value`, {
-        headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
-      });
-      if (res.ok) {
-        const rows = await res.json();
-        const tokenRow = rows.find((r: { key: string }) => r.key === "WHATSAPP_ACCESS_TOKEN");
-        const phoneRow = rows.find((r: { key: string }) => r.key === "WHATSAPP_PHONE_NUMBER_ID");
-        if (tokenRow?.value) cachedToken = tokenRow.value;
-        if (phoneRow?.value) cachedPhoneId = phoneRow.value;
-        lastCredentialFetch = now;
-      }
-    }
-  } catch (err) {
-    console.warn("Could not query app_settings, using fallback env:", err);
-  }
-
-  // 2. Fallback to Deno.env
-  if (!cachedToken) cachedToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "";
-  if (!cachedPhoneId) cachedPhoneId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+  // Credentials come from the function's own secrets.
+  //
+  // They used to be read from app_settings, with the environment only as a fallback.
+  // That table was readable with the project's anon key — public by design and
+  // published in this repository — so a live Meta access token was handed to anyone who
+  // asked for it. It also meant fetching the entire settings table on every message.
+  //
+  // A secret belongs in the secret store. Rotating one is `supabase secrets set`, which
+  // takes effect immediately and needs no deploy.
+  cachedToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "";
+  cachedPhoneId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+  lastCredentialFetch = now;
 
   return { token: cachedToken, phoneId: cachedPhoneId };
 }
