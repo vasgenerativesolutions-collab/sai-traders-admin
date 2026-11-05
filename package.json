@@ -17,7 +17,8 @@
     "eval": "node eval/run_eval.js",
     "check": "node scripts/check_system.js",
     "preflight": "node scripts/store_preflight.js",
-    "test:agent": "node scripts/test_single_instance.js"
+    "test:agent": "node scripts/test_single_instance.js",
+    "test:tally": "node scripts/test_master_outcomes.js"
   },
   "build": {
     "appId": "com.saitraders.bridge",

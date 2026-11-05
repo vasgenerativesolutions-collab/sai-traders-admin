@@ -343,27 +343,51 @@ async function readGodowns() {
   return { count: godowns.length, godowns };
 }
 
-/** Create a godown if it is missing. Main Location always exists, so never touch it. */
 /** True when the group is the notional root, which Tally will not accept by name. */
 function isRootGroup(group) {
   const g = String(group || '').trim().toLowerCase();
   return !g || g === 'primary';
 }
 
+/**
+ * Create a master, tolerating one that is already there.
+ *
+ * Tally reports a master that already exists as an EXCEPTION with a message like
+ * "DUPLICATE ORIGINAL NAME" — not as success. Every ensure* helper used to discard
+ * that result, so a real rejection was swallowed and surfaced later as a nonsense
+ * error about something else: it reported "Unit 'Pcs' does not exist!" for a unit
+ * that did exist, because the duplicate reply was thrown away.
+ *
+ * Already present is the state we wanted, so it counts as success. Anything else is
+ * raised with Tally's own words, because a silent failure here cannot be diagnosed
+ * from outside the shop.
+ */
+async function ensureMaster(kind, label, inner) {
+  const raw = await tally(importEnvelope(inner));
+  const out = importOutcome(raw);
+  if (out.ok) return { name: label, created: out.created > 0, altered: out.altered > 0 };
+
+  // "Already there" wears several different words depending on the master.
+  if (/duplicate|already exist/i.test(out.message || '')) return { name: label, existed: true };
+
+  throw new Error(
+    `could not create ${kind} "${label}" in Tally` +
+    (out.message ? `: ${out.message}` : '') +
+    ` — Tally replied: ${String(raw).replace(/\s+/g, ' ').slice(0, 300)}`
+  );
+}
+
 /** Create a stock group if it is missing. The root is never created. */
 async function ensureStockGroup(name) {
   if (isRootGroup(name)) return { root: true };
   const clean = String(name).trim();
-  const xml = importEnvelope(
-    `<STOCKGROUP NAME="${escapeXml(clean)}" ACTION="Create"><NAME>${escapeXml(clean)}</NAME><PARENT/></STOCKGROUP>`
-  );
-  const out = importOutcome(await tally(xml));
-  return { group: clean, created: out.created > 0 };
+  return ensureMaster('stock group', clean,
+    `<STOCKGROUP NAME="${escapeXml(clean)}" ACTION="Create"><NAME>${escapeXml(clean)}</NAME><PARENT/></STOCKGROUP>`);
 }
 
-/** The units of measure this company has. */
+/** The units of measure this company has. Diagnostic only — existence is proven by creating. */
 async function readUnits() {
-  const raw = await tally(collection('AllUnits', 'Unit', 'Name,OriginalName,IsSimpleUnit'));
+  const raw = await tally(collection('AllUnits', 'Unit', 'Name'));
   const units = [];
   for (const b of raw.matchAll(/<UNIT\b[^>]*>([\s\S]*?)<\/UNIT>/gi)) {
     const name = ((b[0].match(/NAME="([^"]+)"/i) || [, ''])[1] || tag(b[1], 'NAME')).trim();
@@ -375,40 +399,19 @@ async function readUnits() {
 /**
  * Create a unit of measure if it is missing.
  *
- * A fresh Tally company has NO units defined, so the very first item was rejected
- * with "Unit 'Pcs' does not exist!". Godown and stock group were already provisioned;
+ * A fresh Tally company has NO units defined, so the first item was rejected with
+ * "Unit 'Pcs' does not exist!". The godown and stock group were already provisioned;
  * the unit was the one prerequisite still assumed to be there.
- *
- * This verifies rather than assumes. An ignored failure here surfaces later as a
- * confusing error about the item, which is exactly how this cost an evening before:
- * the create was rejected, the result was discarded, and the next call reported a
- * missing unit with no clue why.
  */
 async function ensureUnit(name) {
   const clean = String(name || '').trim();
   if (!clean) return { skipped: true };
-
-  const has = (list) => list.some((u) => u.toLowerCase() === clean.toLowerCase());
-  if (has(await readUnits())) return { unit: clean, existed: true };
-
-  const xml = importEnvelope(
+  return ensureMaster('unit', clean,
     `<UNIT NAME="${escapeXml(clean)}" ACTION="Create">` +
     `<NAME>${escapeXml(clean)}</NAME>` +
     `<ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>` +
     `<DECIMALPLACES>0</DECIMALPLACES>` +
-    `</UNIT>`
-  );
-  const raw = await tally(xml);
-  const out = importOutcome(raw);
-
-  if (has(await readUnits())) return { unit: clean, created: true };
-
-  // Say what Tally actually said. A silent failure here is unfixable from the outside.
-  throw new Error(
-    `could not create unit "${clean}" in Tally` +
-    (out.message ? `: ${out.message}` : '') +
-    ` — Tally replied: ${String(raw).replace(/\s+/g, ' ').slice(0, 400)}`
-  );
+    `</UNIT>`);
 }
 
 /**
@@ -420,26 +423,20 @@ async function ensureUnit(name) {
 async function ensureLedger(name, parent) {
   const clean = String(name || '').trim();
   if (!clean) return { skipped: true };
-  const xml = importEnvelope(
+  return ensureMaster('ledger', clean,
     `<LEDGER NAME="${escapeXml(clean)}" ACTION="Create">` +
     `<NAME>${escapeXml(clean)}</NAME>` +
     `<PARENT>${escapeXml(String(parent || 'Sundry Creditors'))}</PARENT>` +
     `<ISBILLWISEON>No</ISBILLWISEON>` +
-    `</LEDGER>`
-  );
-  const out = importOutcome(await tally(xml));
-  return { ledger: clean, created: out.created > 0, note: out.message };
+    `</LEDGER>`);
 }
 
+/** Create a godown if it is missing. Main Location always exists, so never touch it. */
 async function ensureGodown(name) {
   const clean = String(name || '').trim();
   if (!clean || clean.toLowerCase() === 'main location') return { skipped: true };
-  const xml = importEnvelope(
-    `<GODOWN NAME="${escapeXml(clean)}" ACTION="Create"><NAME>${escapeXml(clean)}</NAME><PARENT/></GODOWN>`
-  );
-  const out = importOutcome(await tally(xml));
-  // Already existing is success, not failure.
-  return { godown: clean, created: out.created > 0, note: out.message };
+  return ensureMaster('godown', clean,
+    `<GODOWN NAME="${escapeXml(clean)}" ACTION="Create"><NAME>${escapeXml(clean)}</NAME><PARENT/></GODOWN>`);
 }
 
 /**
