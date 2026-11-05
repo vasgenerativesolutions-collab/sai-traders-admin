@@ -142,7 +142,8 @@ async function enrollStatus(body: Record<string, unknown>) {
   const handoff = data.version;
   if (!handoff) return json({ status: 'active', tokenAlreadyCollected: true });
 
-  await db.from('agent_devices').update({ version: null }).eq('id', data.id);
+  // Collected — retire both the handoff and the code, so neither can be replayed.
+  await db.from('agent_devices').update({ version: null, enrollment_code: null }).eq('id', data.id);
   return json({ status: 'active', deviceToken: handoff, deviceId: data.id, deviceName: data.device_name, shopId: data.shop_id });
 }
 
@@ -180,7 +181,10 @@ async function approve(req: Request, body: Record<string, unknown>) {
 
   const patch: Record<string, unknown> = {
     status: 'active',
-    enrollment_code: null, // single use — the code cannot adopt a second machine
+    // The code is deliberately NOT cleared here. The agent polls enroll-status by
+    // code, so clearing it at approval left it unable to find its own row and it waited
+    // for an approval that had already happened. It is cleared when the token is
+    // collected, which is what makes it single use.
     last_seen_at: new Date().toISOString(),
   };
   if (body.deviceName) patch.device_name = String(body.deviceName).slice(0, 80);
