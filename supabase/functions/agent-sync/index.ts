@@ -361,6 +361,38 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     if (!error) applied++;
   }
 
+  // Items the catalogue lists but Tally no longer reports have no stock. A reading
+  // always enumerates every stock item in the company — the godown argument does not
+  // filter it — so absence is an answer, not a gap. Leaving the previous figure would
+  // offer for sale what Tally does not have: with one item in Tally the shop was still
+  // showing four as sellable.
+  //
+  // This runs only for a non-empty reading. An empty one returns earlier precisely
+  // because it cannot be told apart from a transient fault.
+  const seen = new Set(
+    items.map((i) => String(i.name || '').trim().toLowerCase()).filter(Boolean)
+  );
+  const { data: catalogue } = await db
+    .from('saree_catalog')
+    .select('id, sku, tally_part_number, stock_quantity')
+    .eq('shop_id', shopId)
+    .gt('stock_quantity', 0);
+
+  const absent = (catalogue || []).filter((row) => {
+    const sku = String(row.sku || '').trim().toLowerCase();
+    const part = String(row.tally_part_number || '').trim().toLowerCase();
+    return !(sku && seen.has(sku)) && !(part && seen.has(part));
+  }).map((row) => row.id);
+
+  let cleared = 0;
+  if (absent.length) {
+    const { error } = await db
+      .from('saree_catalog')
+      .update({ stock_quantity: 0, updated_at: new Date().toISOString() })
+      .in('id', absent);
+    if (!error) cleared = absent.length;
+  }
+
   // Keep the full picture alongside the sellable figure, so the dashboard can explain
   // a zero ("40 in Tally, none in the online godown") instead of just showing nothing.
   const stamp = new Date().toISOString();
@@ -369,7 +401,7 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
     { key: 'tally_unallocated_stock', value: JSON.stringify(unallocated), updated_at: stamp },
   ], { onConflict: 'key' });
 
-  return { applied, onlineGodown: onlineGodown || null, unallocatedItems: Object.keys(unallocated).length };
+  return { applied, cleared, onlineGodown: onlineGodown || null, unallocatedItems: Object.keys(unallocated).length };
 }
 
 // ---------------------------------------------------------------------------

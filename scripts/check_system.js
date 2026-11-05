@@ -203,7 +203,14 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
     const jobs = await api('agent_jobs?select=type,state,error,created_at&order=created_at.desc&limit=40');
     const waiting = jobs.filter((j) => j.state === 'pending');
     const stuck = jobs.filter((j) => j.state === 'in_progress');
-    const failed = jobs.filter((j) => j.state === 'failed');
+
+    // Only failures newer than the last success still matter. A failure that was
+    // diagnosed and fixed stays in the table forever, and reporting it as a current
+    // problem trains everyone to ignore this section.
+    const lastGood = jobs.find((j) => j.state === 'completed');
+    const since = lastGood ? new Date(lastGood.created_at).getTime() : 0;
+    const failed = jobs.filter((j) => j.state === 'failed' && new Date(j.created_at).getTime() > since);
+    const settled = jobs.filter((j) => j.state === 'failed').length - failed.length;
 
     if (!jobs.length) good('nothing queued');
     else {
@@ -216,8 +223,9 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
         good('no job is waiting');
       }
       if (stuck.length) note(`${stuck.length} job(s) in progress`, 'if this persists, the agent stopped mid-job and will retry');
+      if (!failed.length && settled > 0) good(`${settled} earlier failure(s), all superseded by a later success`);
       if (failed.length) {
-        note(`${failed.length} recent job(s) failed`);
+        note(`${failed.length} job(s) failed since the last success`);
         [...new Set(failed.map((f) => f.error))].slice(0, 3)
           .forEach((e) => console.log(`${C.dim}         ${String(e).slice(0, 90)}${C.off}`));
       }
