@@ -200,13 +200,20 @@ const collection = (id, type, fetchFields) => `<?xml version="1.0" encoding="utf
 /** Which company is open, and its GUID — the cloud decides whether that is the right one. */
 async function readCompany() {
   const raw = await tally(collection('CompanyCollection', 'Company', 'Name,GUID,CompanyNumber'));
-  const block = raw.match(/<COMPANY\b[^>]*>([\s\S]*?)<\/COMPANY>/i);
-  if (!block) return null;
-  return {
-    name: (block[0].match(/NAME="([^"]+)"/i) || [, tag(block[1], 'NAME')])[1] || tag(block[1], 'NAME'),
-    guid: tag(block[1], 'GUID'),
-    number: tag(block[1], 'COMPANYNUMBER'),
-  };
+  if (typeof raw !== 'string' || !raw) return null;
+
+  // Tally prefixes its reply with a CMPINFO counter block that contains a literal
+  // <COMPANY>0</COMPANY>. Taking the FIRST <COMPANY> match therefore picked up the
+  // counter, found no name or GUID inside it, and reported the company as not open
+  // even though it was. Scan every block and keep the first real one.
+  for (const block of raw.matchAll(/<COMPANY\b[^>]*>([\s\S]*?)<\/COMPANY>/gi)) {
+    const attr = (block[0].match(/NAME="([^"]+)"/i) || [, ''])[1];
+    const name = (attr || tag(block[1], 'NAME')).trim();
+    const guid = tag(block[1], 'GUID');
+    if (!name && !guid) continue; // the counter block, not a company
+    return { name, guid, number: tag(block[1], 'COMPANYNUMBER') };
+  }
+  return null;
 }
 
 /**
