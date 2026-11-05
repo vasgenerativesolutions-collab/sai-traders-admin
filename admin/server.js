@@ -5219,16 +5219,38 @@ app.post('/api/products/:id/restore', requireAdminAuth, async (req, res) => {
 });
 
 // Adjust / Inward Stock directly in Tally ERP & sync to Supabase
+/**
+ * Set an item's stock in Tally.
+ *
+ * This used to compute a delta here and write to Tally itself — directly if Tally was
+ * on this machine, otherwise forwarded to the store PC's gateway, otherwise dropped
+ * into a queue. All three paths are gone: the gateway no longer runs and nothing
+ * drains that queue, so every stock update from the dashboard silently went nowhere.
+ *
+ * The agent does this properly now. It reads the baseline from Tally immediately before
+ * writing, so no cache can drift into the result, and it provisions the godown, stock
+ * group, unit and party ledger the voucher needs. The job is idempotent on its target,
+ * so a repeat is a no-op rather than a double application.
+ *
+ * The request waits a few seconds for the job to settle, because asking for stock to be
+ * set to 5 and being told something was queued is not an answer. If it has not finished
+ * by then, that is reported honestly rather than claimed as success.
+ */
 app.post('/api/adjust-tally-stock', requireAdminAuth, async (req, res) => {
   try {
-    const { code, targetQuantity, reason, godown } = req.body;
+    const { code, targetQuantity, reason, godown } = req.body || {};
     if (code === undefined || targetQuantity === undefined) {
       return res.status(400).json({ success: false, error: 'Missing code or targetQuantity' });
     }
 
-    // A locked terminal may only touch its own godown. This used to fall through to the
-    // request body's `godown` whenever the lock was absent, so the lock read like a
-    // constraint but behaved like a default — a terminal could name any godown it liked.
+    const newQty = parseInt(targetQuantity, 10);
+    if (!Number.isFinite(newQty) || newQty < 0) {
+      return res.status(400).json({ success: false, error: 'targetQuantity must be zero or a positive whole number' });
+    }
+
+    // A locked terminal may only touch its own godown. Falling through to the request
+    // body whenever the lock was absent made the lock read like a constraint but behave
+    // like a default.
     let targetGodown;
     if (req.device?.isLocked && req.device?.godown) {
       targetGodown = String(req.device.godown).trim();
@@ -5240,317 +5262,116 @@ app.post('/api/adjust-tally-stock', requireAdminAuth, async (req, res) => {
         });
       }
     } else {
-      targetGodown = (godown || await getTargetGodown() || 'Online_saree').trim();
+      targetGodown = String(godown || await getTargetGodown() || '').trim();
+    }
+    if (!targetGodown) {
+      return res.status(400).json({ success: false, error: 'No godown is configured for this shop' });
     }
 
-    // 0. If local Tally is not connected (e.g. running on Admin laptop), forward request to Store PC Gateway if reachable!
-    let queued = false;
-    if (!isTallyLocallyConnected) {
-      try {
-        const gwRes = await fetch(`${SUPABASE_URL}/rest/v1/app_settings?key=eq.in_store_gateway_url&select=value`, {
-          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
-          signal: AbortSignal.timeout(1000)
-        });
-        const gwRows = await gwRes.json();
-        if (Array.isArray(gwRows) && gwRows.length > 0 && gwRows[0].value) {
-          const gw = typeof gwRows[0].value === 'string' ? JSON.parse(gwRows[0].value) : gwRows[0].value;
-          // LAN first: measured 0.07s vs 1.25s through the tunnel, and the quick-tunnel
-          // URL is often stale — get_tunnel_url.js republishes a dead one as fresh.
-          const targetUrl = gw.lanUrl || gw.publicUrl;
-          if (targetUrl) {
-            const fRes = await fetch(`${targetUrl}/api/adjust-tally-stock`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-admin-key': ADMIN_API_KEY || SERVICE_KEY || 'sai-traders-admin-key',
-                'Authorization': `Bearer ${SERVICE_KEY}`
-              },
-              body: JSON.stringify({ ...req.body, godown: targetGodown }),
-              signal: AbortSignal.timeout(1500)
-            });
-            if (fRes.ok) {
-              const fData = await fRes.json();
-              return res.json(fData);
-            }
-          }
-        }
-      } catch (_fwdErr) {
-        // Fast fallback to Supabase queue
-      }
-    }
+    const shopId = (Array.isArray(req.shopIds) && req.shopIds[0]) || SHOP_ID;
 
-    const newQty = parseInt(targetQuantity, 10);
-    if (isNaN(newQty) || newQty < 0) {
-      return res.status(400).json({ success: false, error: 'targetQuantity must be a positive integer' });
-    }
-
-    const pRes = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?or=(sku.eq.${encodeURIComponent(code)},tally_part_number.eq.${encodeURIComponent(code)},name.eq.${encodeURIComponent(code)})&limit=1`, {
-      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-    });
-    const catalogItems = await pRes.json();
-    const saree = catalogItems[0];
+    // Find the product within this member's shop, so one shop cannot adjust another's.
+    const pRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/saree_catalog?shop_id=eq.${shopId}` +
+      `&or=(sku.eq.${encodeURIComponent(code)},tally_part_number.eq.${encodeURIComponent(code)},name.eq.${encodeURIComponent(code)})` +
+      `&select=id,sku,tally_part_number,name,price,tally_rate,stock_quantity&limit=1`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+    );
+    const found = pRes.ok ? await pRes.json() : [];
+    const saree = found[0];
     if (!saree) {
-      return res.status(404).json({ success: false, error: `Saree ${code} not found in catalog` });
+      return res.status(404).json({ success: false, error: `${code} is not in this shop catalogue` });
     }
 
-    // "Set stock to N" is an absolute instruction, but it is applied to Tally as a delta
-    // voucher — so the baseline must be Tally's CURRENT figure, not a cache.
-    // saree_catalog.stock_quantity is refreshed only by the sync, so any drift between it
-    // and Tally lands directly in the result: setting 40 against a cache 6 behind Tally
-    // produced 46. Read live whenever Tally is reachable.
-    let currentQty = saree.stock_quantity || 0;
-    let baselineSource = 'catalog_cache';
-    // saree.item_created_in_tally is a Supabase flag that can disagree with Tally. When we
-    // can see Tally, its answer wins — a false flag on an existing item would otherwise
-    // push ACTION="Alter" and reset the opening balance instead of raising a voucher.
-    let itemExistsInTally = Boolean(saree.item_created_in_tally);
-    if (isTallyLocallyConnected) {
-      try {
-        const liveItems = await fetchAllTallyStockItems();
-        const wanted = [code, saree.sku, saree.tally_part_number, saree.name]
-          .filter(Boolean).map(v => String(v).toLowerCase().trim());
-        const match = liveItems.find(it =>
-          wanted.includes(String(it.product_code || '').toLowerCase().trim()) ||
-          wanted.includes(String(it.name || '').toLowerCase().trim())
-        );
-        if (match) {
-          itemExistsInTally = true;
-          const gKey = Object.keys(match.godown_stocks || {})
-            .find(k => k.toLowerCase() === targetGodown.toLowerCase());
-          if (gKey !== undefined) {
-            currentQty = Number(match.godown_stocks[gKey]) || 0;
-            baselineSource = 'tally_godown';
-          } else {
-            // No godown row for this item (batch-wise details off). Its whole closing
-            // balance is the only figure Tally will give, so use that.
-            currentQty = Number(match.closing_total) || 0;
-            baselineSource = 'tally_closing_total';
-          }
+    // Name the item as Tally knows it. The part number is what the shop typed there;
+    // the SKU is the catalogue's own code and only matches when the two agree.
+    const tallyName = saree.tally_part_number || saree.sku || saree.name;
+    const rate = Number(saree.price) || Number(saree.tally_rate) || 0;
+
+    const jobRes = await fetch(`${SUPABASE_URL}/rest/v1/agent_jobs`, {
+      method: 'POST',
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation'
+      },
+      body: JSON.stringify([{
+        shop_id: shopId,
+        type: 'adjust_stock',
+        state: 'pending',
+        payload: {
+          name: tallyName,
+          targetQuantity: newQty,
+          godown: targetGodown,
+          unit: 'Pcs',
+          rate,
+          reason: reason ? String(reason).slice(0, 200) : null
         }
-      } catch (liveErr) {
-        console.warn('[AdjustStock] Live Tally baseline unavailable, using catalog cache:', liveErr.message);
-      }
-    }
-    const delta = newQty - currentQty;
-    console.log(`[AdjustStock] ${code}: target=${newQty} baseline=${currentQty} (${baselineSource}) delta=${delta >= 0 ? '+' : ''}${delta}`);
-    const targetItem = saree.name || saree.sku;
-    const isNos = /mysore|paithani|0021|0022/i.test(targetItem + saree.sku);
-    const unitLabel = isNos ? 'Nos' : 'Pcs';
-    const rate = saree.price || 10000;
-    const activeGodown = targetGodown;
-
-    let tallyAction = 'none';
-    let tallySyncedDirectly = false;
-
-    if (isTallyLocallyConnected) {
-      // Local Tally is connected on this PC - apply master creation or voucher immediately
-      try {
-        if (!itemExistsInTally) {
-          const pushRes = await pushProductToTallyMaster({
-            sku: saree.sku,
-            name: targetItem,
-            quantity: newQty,
-            rate,
-            unitLabel,
-            godownName: activeGodown
-          });
-          if (pushRes.success) {
-            tallySyncedDirectly = true;
-            tallyAction = `Created item master in Tally with ${newQty} ${unitLabel} (${activeGodown})`;
-          }
-        } else if (delta > 0) {
-          const refNum = `RN-ADJ-${Date.now().toString().slice(-6)}`;
-          let rnXml = buildTallyReceiptNoteXml({
-            refNumber: refNum,
-            stockItemName: targetItem,
-            qty: delta,
-            rate,
-            unitLabel,
-            godownName: activeGodown
-          });
-          let tallyRes = await sendToTally(rnXml);
-          if (!tallyRes.includes('<CREATED>1</CREATED>') && tallyRes.includes('Voucher date is missing')) {
-            const now = new Date();
-            const fallbackDate = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}01`;
-            rnXml = buildTallyReceiptNoteXml({
-              refNumber: refNum,
-              stockItemName: targetItem,
-              qty: delta,
-              rate,
-              unitLabel,
-              godownName: activeGodown,
-              dateOverride: fallbackDate
-            });
-            tallyRes = await sendToTally(rnXml);
-          }
-          tallySyncedDirectly = true;
-          tallyAction = `Inwarded +${delta} ${unitLabel} via ${refNum} (${activeGodown} Godown)`;
-        } else if (delta < 0) {
-          const refNum = `VCH-ADJ-${Date.now().toString().slice(-6)}`;
-          let svXml = buildTallySalesVoucherXml({
-            orderNumber: refNum,
-            stockItemName: targetItem,
-            qty: Math.abs(delta),
-            rate,
-            unitLabel,
-            godownName: activeGodown,
-            buyerName: reason || 'Inventory Adjustment'
-          });
-          let tallyRes = await sendToTally(svXml);
-          if (!tallyRes.includes('<CREATED>1</CREATED>') && tallyRes.includes('Voucher date is missing')) {
-            const now = new Date();
-            const fallbackDate = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}01`;
-            svXml = buildTallySalesVoucherXml({
-              orderNumber: refNum,
-              stockItemName: targetItem,
-              qty: Math.abs(delta),
-              rate,
-              unitLabel,
-              godownName: activeGodown,
-              buyerName: reason || 'Inventory Adjustment',
-              dateOverride: fallbackDate
-            });
-            tallyRes = await sendToTally(svXml);
-          }
-          tallySyncedDirectly = true;
-          tallyAction = `Deducted -${Math.abs(delta)} ${unitLabel} via ${refNum} (${activeGodown} Godown)`;
-        }
-      } catch (tErr) {
-        console.warn('[adjust-tally-stock] Local Tally error:', tErr.message);
-        tallyAction = `Tally offline or error (${tErr.message}); adjusted in cloud inventory`;
-      }
-    } else {
-      // Local Tally not connected (e.g. on laptop) - queue for Store PC background worker
-      queued = true;
-      if (!saree.item_created_in_tally) {
-        await queuePendingTallyAction({
-          type: 'push_to_tally',
-          sku: saree.sku,
-          name: targetItem,
-          quantity: newQty,
-          rate: rate,
-          unitLabel: unitLabel,
-          godown: activeGodown
-        });
-      } else {
-        await queuePendingTallyAction({
-          type: 'adjust_stock',
-          sku: saree.sku,
-          targetItem: targetItem,
-          newQty: newQty,
-          delta: delta,
-          godown: activeGodown,
-          rate: rate,
-          unitLabel: unitLabel,
-          reason: reason || 'Inventory Adjustment'
-        });
-      }
-      tallyAction = `Queued to Store PC Tally ERP (Syncs automatically)`;
-    }
-
-    // 1. Directly update saree_catalog stock_quantity and attributes_json.godown_stocks
-    const updatedAttributes = { ...(saree.attributes_json || {}) };
-    if (!updatedAttributes.godown_stocks || typeof updatedAttributes.godown_stocks !== 'object') {
-      updatedAttributes.godown_stocks = {};
-    }
-    updatedAttributes.godown_stocks[activeGodown] = newQty;
-    if (!updatedAttributes.tally_group || updatedAttributes.tally_group.toLowerCase() === 'primary') {
-      const lowerCode = (saree.sku || '').toLowerCase().trim();
-      if (lowerCode === 'jari' || lowerCode === 'jari1' || lowerCode === 'silk') {
-        updatedAttributes.tally_group = 'Primary';
-      } else {
-        updatedAttributes.tally_group = TALLY_STOCK_GROUP;
-      }
-    }
-
-    const patchPayload = {
-      stock_quantity: newQty,
-      attributes_json: updatedAttributes,
-      updated_at: new Date().toISOString()
-    };
-    if (tallySyncedDirectly) {
-      patchPayload.item_created_in_tally = true;
-      patchPayload.stock_added_in_tally = true;
-      patchPayload.tally_last_seen_at = new Date().toISOString();
-    }
-
-    await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${saree.id}`, {
-      method: 'PATCH',
-      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(patchPayload)
+      }])
     });
 
-    // 2. Directly upsert into stock_pool for this product and active godown
-    const shopId = '00000000-0000-0000-0000-000000000001';
-    const spCheck = await fetch(`${SUPABASE_URL}/rest/v1/stock_pool?or=(product_code.eq.${encodeURIComponent(saree.sku)},saree_id.eq.${saree.id})`, {
-      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-    });
-    const spRows = await spCheck.json().catch(() => []);
-    const matchingRow = Array.isArray(spRows) ? spRows.find(r => (r.tally_godown || '').toLowerCase() === activeGodown.toLowerCase()) || spRows[0] : null;
+    if (!jobRes.ok) {
+      const detail = await jobRes.text();
+      return res.status(502).json({ success: false, error: `Could not queue the update: ${detail.slice(0, 200)}` });
+    }
+    const job = (await jobRes.json())[0];
 
-    if (matchingRow) {
-      await fetch(`${SUPABASE_URL}/rest/v1/stock_pool?id=eq.${matchingRow.id}`, {
+    // The agent asks for work every 5 seconds, so this usually settles well inside the
+    // wait. Polling is cheap, and the alternative is telling someone their stock changed
+    // when it may not have.
+    const deadline = Date.now() + 15000;
+    let finalState = 'pending';
+    let jobError = null;
+    let jobResult = null;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1200));
+      const sRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/agent_jobs?id=eq.${job.id}&select=state,error,result`,
+        { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+      );
+      const rows = sRes.ok ? await sRes.json() : [];
+      if (!rows[0]) continue;
+      finalState = rows[0].state;
+      jobError = rows[0].error;
+      jobResult = rows[0].result;
+      if (finalState === 'completed' || finalState === 'failed') break;
+    }
+
+    if (finalState === 'failed') {
+      return res.status(502).json({
+        success: false,
+        error: jobError || 'Tally rejected the update',
+        jobId: job.id
+      });
+    }
+
+    if (finalState === 'completed') {
+      // Keep the catalogue in step at once. The agent's next reading would correct it
+      // within two minutes anyway, but the person who just pressed the button should not
+      // have to wait to see their own change.
+      await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${saree.id}`, {
         method: 'PATCH',
         headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          online_quantity: newQty,
-          source: 'admin_entered',
-          tally_godown: activeGodown,
-          last_synced_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-      });
-    } else {
-      await fetch(`${SUPABASE_URL}/rest/v1/stock_pool`, {
-        method: 'POST',
-        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          shop_id: shopId,
-          product_code: saree.sku,
-          saree_id: saree.id,
-          online_quantity: newQty,
-          held_quantity: 0,
-          sold_pending_quantity: 0,
-          source: 'admin_entered',
-          tally_godown: activeGodown,
-          last_synced_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
+        body: JSON.stringify({ stock_quantity: newQty, updated_at: new Date().toISOString() })
+      }).catch(() => {});
+
+      return res.json({
+        success: true,
+        newQuantity: newQty,
+        jobId: job.id,
+        detail: jobResult || null,
+        message: `${tallyName} set to ${newQty} in ${targetGodown}.`
       });
     }
 
-    // 3. Update app_settings tally_godown_stock_matrix so matrix lookup reflects this immediately
-    try {
-      const codeKey = (saree.sku || '').toLowerCase().trim();
-      const matRes = await fetch(`${SUPABASE_URL}/rest/v1/app_settings?key=eq.tally_godown_stock_matrix&select=value`, {
-        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-      });
-      const matRows = await matRes.json().catch(() => []);
-      let mat = {};
-      if (Array.isArray(matRows) && matRows[0]?.value) {
-        try { mat = typeof matRows[0].value === 'string' ? JSON.parse(matRows[0].value) : matRows[0].value; } catch (_) {}
-      }
-      if (!mat[codeKey]) mat[codeKey] = {};
-      mat[codeKey][activeGodown] = newQty;
-      await fetch(`${SUPABASE_URL}/rest/v1/app_settings`, {
-        method: 'POST',
-        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-        body: JSON.stringify({ key: 'tally_godown_stock_matrix', value: JSON.stringify(mat) })
-      });
-    } catch (_matErr) {}
-
-    res.json({
+    // Still pending: the agent is not currently collecting work.
+    return res.json({
       success: true,
-      code,
-      godown: activeGodown,
-      delta,
+      queued: true,
       newQuantity: newQty,
-      queued: Boolean(queued),
-      tallyAction,
-      message: queued 
-        ? `Stock set to ${newQty} ${unitLabel} in ${activeGodown}. Queued to Store PC Tally ERP.`
-        : `Stock successfully adjusted for ${saree.name} (${saree.sku}): ${newQty} ${unitLabel} in ${activeGodown}`
+      jobId: job.id,
+      message: `Queued: ${tallyName} will be set to ${newQty} in ${targetGodown} when the store PC next reports in.`
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
