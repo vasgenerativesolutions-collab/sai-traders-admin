@@ -44,3 +44,5 @@ release/
 
 # Security audits document live findings — keep out of the public repo.
 SECURITY_AUDIT.md
+
+store_preflight_report.json
