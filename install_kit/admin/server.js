@@ -282,46 +282,6 @@ function shopKey(key) {
   return `${key}:${SHOP_ID}`;
 }
 
-// Read a shop-scoped setting, falling back to the legacy unkeyed row.
-async function readShopSetting(key) {
-  const scoped = shopKey(key);
-  const candidates = scoped === key ? [key] : [scoped, key];
-  for (const k of candidates) {
-    try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_settings?key=eq.${encodeURIComponent(k)}&select=value,updated_at`, {
-        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
-        signal: AbortSignal.timeout(4000)
-      });
-      const rows = await res.json();
-      if (Array.isArray(rows) && rows[0] && rows[0].value !== null && rows[0].value !== undefined) {
-        let v = rows[0].value;
-        try { v = typeof v === 'string' ? JSON.parse(v) : v; } catch (_) {}
-        return { value: v, updatedAt: rows[0].updated_at, keyUsed: k };
-      }
-    } catch (_) {}
-  }
-  return { value: null, updatedAt: null, keyUsed: null };
-}
-
-// Write a shop-scoped setting. Always writes the scoped key.
-async function writeShopSetting(key, value) {
-  const payload = typeof value === 'string' ? value : JSON.stringify(value);
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/app_settings`, {
-      method: 'POST',
-      headers: {
-        apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`,
-        'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({ key: shopKey(key), value: payload, updated_at: new Date().toISOString() })
-    });
-    return true;
-  } catch (err) {
-    console.warn(`[ShopSetting] Failed to write ${shopKey(key)}: ${err.message}`);
-    return false;
-  }
-}
-
 // -----------------------------------------------------------------------------
 // SaaS Multi-Shop & Godown Configuration (Strict Godown Isolation)
 // -----------------------------------------------------------------------------
@@ -730,22 +690,19 @@ app.use((req, res, next) => {
 });
 
 app.get(['/', '/index.html'], (req, res) => {
-  res.setHeader('Clear-Site-Data', '"cache"');
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.get(['/app.js', '/app-v2.js'], (req, res) => {
-  res.setHeader('Clear-Site-Data', '"cache"');
   res.setHeader('Content-Type', 'application/javascript');
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'public', 'app-v2.js'));
 });
 
 app.get(['/style.css'], (req, res) => {
-  res.setHeader('Clear-Site-Data', '"cache"');
   res.setHeader('Content-Type', 'text/css');
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'public', 'style.css'));
 });
 
@@ -6064,7 +6021,7 @@ app.get('/api/admin/godowns/summary', async (req, res) => {
         <REPORTNAME>Godown Summary</REPORTNAME>
         <STATICVARIABLES>
           <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-          <EXPLODEFLAG>Yes</EXPLODEFLAG>
+          <EXPLODEFLAG>No</EXPLODEFLAG>
           <ISITEMWISE>Yes</ISITEMWISE>
           <SVGODOWNNAME>${targetGodown}</SVGODOWNNAME>
         </STATICVARIABLES>
@@ -6300,10 +6257,6 @@ app.get('/api/admin/tally-ping', async (req, res) => {
 // -----------------------------------------------------------------------------
 // SEC-08: In-Store Desktop Bridge Telemetry & Health Endpoints
 // -----------------------------------------------------------------------------
-app.get('/api/status', (req, res) => {
-  res.json({ success: true, status: 'online', service: 'Sai Traders Bridge Backend' });
-});
-
 app.get('/api/bridge-telemetry', async (req, res) => {
   try {
     const activeGodown = await getTargetGodown();
