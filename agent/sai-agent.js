@@ -361,27 +361,54 @@ async function ensureStockGroup(name) {
   return { group: clean, created: out.created > 0 };
 }
 
+/** The units of measure this company has. */
+async function readUnits() {
+  const raw = await tally(collection('AllUnits', 'Unit', 'Name,OriginalName,IsSimpleUnit'));
+  const units = [];
+  for (const b of raw.matchAll(/<UNIT\b[^>]*>([\s\S]*?)<\/UNIT>/gi)) {
+    const name = ((b[0].match(/NAME="([^"]+)"/i) || [, ''])[1] || tag(b[1], 'NAME')).trim();
+    if (name) units.push(name);
+  }
+  return units;
+}
+
 /**
  * Create a unit of measure if it is missing.
  *
- * A fresh Tally company has NO units defined, so the very first item rejected with
- * "Unit 'Pcs' does not exist!". Godown and stock group were already handled; the unit
- * was the one prerequisite still assumed to be there.
+ * A fresh Tally company has NO units defined, so the very first item was rejected
+ * with "Unit 'Pcs' does not exist!". Godown and stock group were already provisioned;
+ * the unit was the one prerequisite still assumed to be there.
+ *
+ * This verifies rather than assumes. An ignored failure here surfaces later as a
+ * confusing error about the item, which is exactly how this cost an evening before:
+ * the create was rejected, the result was discarded, and the next call reported a
+ * missing unit with no clue why.
  */
 async function ensureUnit(name) {
   const clean = String(name || '').trim();
   if (!clean) return { skipped: true };
+
+  const has = (list) => list.some((u) => u.toLowerCase() === clean.toLowerCase());
+  if (has(await readUnits())) return { unit: clean, existed: true };
+
   const xml = importEnvelope(
     `<UNIT NAME="${escapeXml(clean)}" ACTION="Create">` +
     `<NAME>${escapeXml(clean)}</NAME>` +
-    `<ORIGINALNAME>${escapeXml(clean)}</ORIGINALNAME>` +
     `<ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>` +
     `<DECIMALPLACES>0</DECIMALPLACES>` +
     `</UNIT>`
   );
-  const out = importOutcome(await tally(xml));
-  // Already existing is success, not failure — same as a godown.
-  return { unit: clean, created: out.created > 0, note: out.message };
+  const raw = await tally(xml);
+  const out = importOutcome(raw);
+
+  if (has(await readUnits())) return { unit: clean, created: true };
+
+  // Say what Tally actually said. A silent failure here is unfixable from the outside.
+  throw new Error(
+    `could not create unit "${clean}" in Tally` +
+    (out.message ? `: ${out.message}` : '') +
+    ` — Tally replied: ${String(raw).replace(/\s+/g, ' ').slice(0, 400)}`
+  );
 }
 
 /**
