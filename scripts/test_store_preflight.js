@@ -9,10 +9,20 @@
  */
 const assert = require('assert');
 
+// Mirrors tag() in store_preflight.js. Must match tags WITH attributes and must
+// NOT match <NAME.LIST>, which Tally nests inside COMPANY and STOCKITEM blocks.
 const tag = (body, name) => {
-  const m = body.match(new RegExp(`<${name}[^>]*>([^<]*)</${name}>`, 'i'));
+  const m = body.match(new RegExp('<' + name + '(?:[ 	][^>]*)?>([^<]*)</' + name + '>', 'i'));
   return m ? m[1].trim() : '';
 };
+
+// These five pin the regex itself — an earlier version lost its s escape and silently
+// stopped matching any attributed tag, which would have zeroed every balance read.
+assert.strictEqual(tag('<CLOSINGBALANCE TYPE="Quantity"> 9 Pcs</CLOSINGBALANCE>', 'CLOSINGBALANCE'), '9 Pcs');
+assert.strictEqual(tag('<PARENT> Primary</PARENT>', 'PARENT'), 'Primary');
+assert.strictEqual(tag('<GUID>abc-123</GUID>', 'GUID'), 'abc-123');
+assert.strictEqual(tag('<LANGUAGENAME.LIST><NAME.LIST TYPE="String"><NAME>Sarie01</NAME>', 'NAME'), 'Sarie01');
+assert.strictEqual(tag('<BATCHALLOCATIONS.LIST>     </BATCHALLOCATIONS.LIST>', 'GODOWNNAME'), '');
 
 // --- godown parsing ----------------------------------------------------------
 function parseGodowns(raw) {
@@ -117,4 +127,4 @@ const winName = rel => {
 assert.strictEqual(winName('10.0.19045'), 'Windows 10');
 assert.strictEqual(winName('10.0.26300'), 'Windows 11');
 
-console.log('store preflight parsing: all 14 cases pass');
+console.log('store preflight parsing: all 19 cases pass');

@@ -68,7 +68,8 @@ const collection = (id, type, fetchFields) => `<?xml version="1.0" encoding="utf
 </DESC></BODY></ENVELOPE>`;
 
 const tag = (body, name) => {
-  const m = body.match(new RegExp(`<${name}[^>]*>([^<]*)</${name}>`, 'i'));
+  // Must not match <NAME.LIST>, which Tally nests inside COMPANY and STOCKITEM.
+  const m = body.match(new RegExp('<' + name + '(?:[ \t][^>]*)?>([^<]*)</' + name + '>', 'i'));
   return m ? m[1].trim() : '';
 };
 
@@ -158,9 +159,9 @@ async function discoverTallyConnection() {
   let raw;
   try {
     raw = await tally(`<?xml version="1.0" encoding="utf-8"?>
-<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>Cmp</ID></HEADER>
+<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>CompanyCollection</ID></HEADER>
 <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES>
-<TDL><TDLMESSAGE><COLLECTION NAME="Cmp"><TYPE>Company</TYPE><FETCH>Name,CompanyNumber,Guid,StartingFrom</FETCH></COLLECTION></TDLMESSAGE></TDL>
+<TDL><TDLMESSAGE><COLLECTION NAME="CompanyCollection"><TYPE>Company</TYPE><FETCH>Name,GUID,CompanyNumber,StartingFrom</FETCH></COLLECTION></TDLMESSAGE></TDL>
 </DESC></BODY></ENVELOPE>`);
   } catch (err) {
     check('Reachable', 'fail', `${TALLY_HOST}:${TALLY_PORT} — ${err.message}`);
