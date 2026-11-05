@@ -317,6 +317,23 @@ async function readGodowns() {
 }
 
 /** Create a godown if it is missing. Main Location always exists, so never touch it. */
+/** True when the group is the notional root, which Tally will not accept by name. */
+function isRootGroup(group) {
+  const g = String(group || '').trim().toLowerCase();
+  return !g || g === 'primary';
+}
+
+/** Create a stock group if it is missing. The root is never created. */
+async function ensureStockGroup(name) {
+  if (isRootGroup(name)) return { root: true };
+  const clean = String(name).trim();
+  const xml = importEnvelope(
+    `<STOCKGROUP NAME="${escapeXml(clean)}" ACTION="Create"><NAME>${escapeXml(clean)}</NAME><PARENT/></STOCKGROUP>`
+  );
+  const out = importOutcome(await tally(xml));
+  return { group: clean, created: out.created > 0 };
+}
+
 async function ensureGodown(name) {
   const clean = String(name || '').trim();
   if (!clean || clean.toLowerCase() === 'main location') return { skipped: true };
@@ -338,7 +355,7 @@ async function ensureGodown(name) {
 async function createStockItem(p) {
   const name = String(p.name || p.sku || '').trim();
   if (!name) throw new Error('an item name is required');
-  const group = String(p.group || 'Primary').trim();
+  const group = String(p.group || '').trim();
   const godown = String(p.godown || 'Main Location').trim();
   const unit = String(p.unit || 'Pcs').trim();
   const qty = Math.max(0, Number(p.quantity) || 0);
@@ -346,6 +363,7 @@ async function createStockItem(p) {
   const value = (qty * rate).toFixed(2);
 
   await ensureGodown(godown);
+  await ensureStockGroup(group);
 
   const batch = qty > 0 ? `
   <BATCHALLOCATIONS.LIST>
@@ -358,7 +376,7 @@ async function createStockItem(p) {
 
   const body = (action) => importEnvelope(`<STOCKITEM NAME="${escapeXml(name)}" ACTION="${action}">
   <NAME>${escapeXml(name)}</NAME>
-  <PARENT>${escapeXml(group)}</PARENT>
+  ${isRootGroup(group) ? '<PARENT/>' : `<PARENT>${escapeXml(group)}</PARENT>`}
   <BASEUNITS>${escapeXml(unit)}</BASEUNITS>
   <OPENINGBALANCE>${qty} ${escapeXml(unit)}</OPENINGBALANCE>
   <OPENINGRATE>${rate.toFixed(2)}/${escapeXml(unit)}</OPENINGRATE>
@@ -482,6 +500,78 @@ async function drainOutbox(token) {
 }
 
 // ---------------------------------------------------------------------------
+// Self-update.
+//
+// A fix to this file would otherwise mean visiting every shop PC. On start the agent
+// compares itself against the published copy and, if it differs, writes the new one
+// and relaunches. Nobody downloads anything by hand again.
+//
+// Guards, because this replaces the running program:
+//   - only ever applied at startup, never mid-job
+//   - the download must parse as JavaScript and look like this agent before it is
+//     trusted, so a truncated or wrong response cannot brick the install
+//   - the previous version is kept, so a bad update can be rolled back on the spot
+//   - any failure is ignored and the current version simply carries on
+// ---------------------------------------------------------------------------
+const UPDATE_URL = process.env.SAI_UPDATE_URL ||
+  'https://raw.githubusercontent.com/vasgenerativesolutions-collab/sai-traders-admin/main/agent/sai-agent.js';
+
+function fetchText(url, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { timeout: timeoutMs }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+      let d = '';
+      res.on('data', (c) => (d += c));
+      res.on('end', () => resolve(d));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timed out')); });
+  });
+}
+
+async function selfUpdate() {
+  if (process.env.SAI_NO_UPDATE === '1' || process.argv.includes('--no-update')) return false;
+  const me = __filename;
+
+  let latest;
+  try {
+    latest = await fetchText(UPDATE_URL);
+  } catch (_) {
+    return false; // offline or unreachable — carry on with what we have
+  }
+
+  const current = fs.readFileSync(me, 'utf8');
+  if (latest === current) return false;
+
+  // Refuse anything that is not plausibly this program. A proxy error page or a
+  // truncated download would otherwise replace a working agent with rubbish.
+  if (latest.length < 8000 || !latest.includes('SAI AGENT') || !latest.includes('async function main()')) {
+    warn('ignored an update that did not look like the agent');
+    return false;
+  }
+  try {
+    new (require('vm').Script)(latest, { filename: 'update-check' });
+  } catch (err) {
+    warn('ignored an update that failed to parse: ' + err.message);
+    return false;
+  }
+
+  try {
+    fs.writeFileSync(me + '.prev', current);
+    fs.writeFileSync(me, latest);
+  } catch (err) {
+    warn('could not write the update: ' + err.message);
+    return false;
+  }
+
+  log('updated to the latest version — restarting');
+  const { spawn } = require('child_process');
+  spawn(process.execPath, [me, ...process.argv.slice(2)], { stdio: 'inherit', detached: false })
+    .on('exit', (code) => process.exit(code === null ? 0 : code));
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Enrollment
 // ---------------------------------------------------------------------------
 async function enrollInteractive() {
@@ -580,6 +670,9 @@ async function main() {
   }
 
   banner(['SAI AGENT', `${os.hostname()}  ·  Tally at ${TALLY_HOST}:${TALLY_PORT}`]);
+
+  // Before doing any work, make sure this is the current version.
+  if (await selfUpdate()) return;
 
   let token = loadToken();
   if (!token) {
