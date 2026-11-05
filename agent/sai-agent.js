@@ -45,7 +45,7 @@ const POLL_MS = 5000;        // how often to ask for work
 const HEARTBEAT_MS = 30000;  // how often to report liveness
 const STOCK_SYNC_MS = 120000; // how often to push a fresh stock reading unprompted
 const TALLY_SPACING_MS = 250; // Tally's XML engine is single threaded — never crowd it
-const UPDATE_CHECK_MS = 3600000; // how often a long-running agent looks for a fix
+const UPDATE_CHECK_MS = 600000; // how often a long-running agent looks for a fix
 
 const STATE_DIR = path.join(process.env.PROGRAMDATA || os.homedir(), 'SaiAgent');
 const TOKEN_FILE = path.join(STATE_DIR, 'device.enc');
