@@ -48,7 +48,13 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
       // token in a header instead, and ask for credentials so CORS allows it.
       options = Object.assign({}, options);
       const hdrs = new Headers(options.headers || {});
-      const adminTok = localStorage.getItem('sai_admin_token');
+      // sai_admin_token is never written by the login flow — the Supabase session token
+      // is stored as sb_access_token. Reading the wrong key meant no Authorization
+      // header was ever sent, so a dashboard hosted away from the server had no
+      // credential at all and could not be scoped to the member's shop.
+      const adminTok = window.supabaseToken
+        || localStorage.getItem('sb_access_token')
+        || localStorage.getItem('sai_admin_token');
       if (adminTok && !hdrs.has('Authorization')) hdrs.set('Authorization', 'Bearer ' + adminTok);
       options.headers = hdrs;
       if (apiBase) options.credentials = 'include';

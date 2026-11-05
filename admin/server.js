@@ -182,6 +182,41 @@ const ALLOW_LOOPBACK_ADMIN = DEPLOYMENT_MODE !== 'hosted';
 
 const MASTER_ADMIN_EMAIL_DEFAULT = (env.MASTER_ADMIN_EMAIL || process.env.MASTER_ADMIN_EMAIL || 'admin@saitraders.com').toLowerCase().trim();
 
+/**
+ * Which shops this person may see.
+ *
+ * Nothing tied a signed-in user to a shop, so every screen showed every shop's data:
+ * the queries simply did not mention shop_id. Membership is read once per request and
+ * reused, rather than remembered at sixty query sites.
+ */
+async function shopIdsForUser(userId) {
+  if (!userId) return [];
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/shop_members?select=shop_id&user_id=eq.${encodeURIComponent(userId)}`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+    );
+    if (!res.ok) return [];
+    return (await res.json()).map((r) => r.shop_id).filter(Boolean);
+  } catch (_err) {
+    return [];
+  }
+}
+
+/**
+ * The shops a request may read, as a PostgREST filter fragment.
+ *
+ * A request with no identified member gets the shop the store PC is bound to, which is
+ * the console-on-the-shop-PC case. It never gets "all shops" — that is how one
+ * customer's catalogue ended up on another customer's screen.
+ */
+function shopFilterFor(req) {
+  const ids = Array.isArray(req.shopIds) ? req.shopIds.filter(Boolean) : [];
+  if (ids.length === 1) return `shop_id=eq.${ids[0]}`;
+  if (ids.length > 1) return `shop_id=in.(${ids.join(',')})`;
+  return `shop_id=eq.${SHOP_ID}`;
+}
+
 async function requireAdminAuth(req, res, next) {
   // 0. A paired device token identifies a TERMINAL, not an owner.
   //
@@ -221,6 +256,7 @@ async function requireAdminAuth(req, res, next) {
       const { data, error } = await supabaseAuth.auth.getUser(token);
       if (data && data.user) {
         req.user = data.user;
+        req.shopIds = await shopIdsForUser(data.user.id);
         return next();
       }
     } catch (err) {
@@ -3628,14 +3664,21 @@ app.get('/api/status', async (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
-app.get('/api/products', async (req, res) => {
+app.get('/api/products', requireAdminAuth, async (req, res) => {
   try {
     const device = req.device || await resolveDeviceFromRequest(req);
     // If request comes from a locked device, strictly force requestedGodown to device.godown
     const requestedGodown = (device?.godown || req.query.godown || await getTargetGodown() || 'Online_saree').trim();
 
+    // Only this member's shop, and only products that are actually in the catalogue.
+    // Returning every shop's rows is how one customer's sarees reached another's screen;
+    // returning archived ones is why a previous Tally company's items kept showing.
+    const scope = shopFilterFor(req);
+    const includeRemoved = req.query.include_removed === 'true';
+    const lifecycle = includeRemoved ? '' : '&status=not.in.(archived,deleted)';
+
     const [pRes, vRes, spRes, matrixRes, unallocRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?order=created_at.desc`, {
+      fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?${scope}${lifecycle}&order=created_at.desc`, {
         headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
       }),
       fetch(`${SUPABASE_URL}/rest/v1/video_record?select=id,video_id,product_code,saree,reference_frames`, {
@@ -4360,11 +4403,11 @@ app.post('/api/products', requireAdminAuth, express.json({ limit: '20mb' }), asy
 // 3. API: Tally Stock Ingestion & Real-Time Sync
 // -----------------------------------------------------------------------------
 // Live Stock Polling Endpoint for Frontend Card Realtime Auto-Update
-app.get('/api/live-stock', async (req, res) => {
+app.get('/api/live-stock', requireAdminAuth, async (req, res) => {
   try {
     const requestedGodown = (req.query.godown || await getTargetGodown() || 'Online_saree').trim();
     const [pRes, oRes, spRes, matrixRes, unallocRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?select=id,sku,tally_part_number,name,stock_quantity,attributes_json,price,status,is_active,updated_at&order=created_at.desc`, {
+      fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?${shopFilterFor(req)}&status=not.in.(archived,deleted)&select=id,sku,tally_part_number,name,stock_quantity,attributes_json,price,status,is_active,updated_at&order=created_at.desc`, {
         headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
       }),
       fetch(`${SUPABASE_URL}/rest/v1/orders?select=id,order_number,items,total_amount,payment_status,status,created_at&order=created_at.desc&limit=1`, {
