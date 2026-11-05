@@ -107,3 +107,42 @@ assert.notStrictEqual(shopKey('tally_godown_stock_matrix', SHOP_B), shopKey('tal
 assert.strictEqual(shopKey('whatsapp_access_token', SHOP_B), 'whatsapp_access_token');
 
 console.log('per-shop settings keys: all 5 cases pass');
+
+// --- rate limit tiering -------------------------------------------------------
+// The pairing screen polls GET /api/auth/device-pair-status every ~2s while it waits.
+// Classifying that as an auth attempt tripped the 10/min limit in about 20 seconds and
+// made pairing impossible — observed live as:
+//   [RateLimit] ::1 exceeded auth tier (21/10) on GET /api/auth/device-pair-status
+function tierFor(method, path) {
+  const isAuthPath = /^\/api\/(admin\/)?auth\//.test(path) || path.includes('/login');
+  if (isAuthPath && method !== 'GET' && method !== 'OPTIONS') return 'auth';
+  if (method !== 'GET' && method !== 'OPTIONS') return 'mutate';
+  return 'read';
+}
+
+// A credential attempt is strictly limited
+assert.strictEqual(tierFor('POST', '/api/auth/device-pair-code'), 'auth');
+assert.strictEqual(tierFor('POST', '/api/admin/login'), 'auth');
+// A status poll under the same prefix is a read, not an attempt
+assert.strictEqual(tierFor('GET', '/api/auth/device-pair-status'), 'read');
+assert.strictEqual(tierFor('GET', '/api/auth/supabase-config'), 'read');
+// Ordinary mutations keep the middle tier
+assert.strictEqual(tierFor('POST', '/api/adjust-tally-stock'), 'mutate');
+assert.strictEqual(tierFor('DELETE', '/api/products/X'), 'mutate');
+// Reads stay cheap, and preflight is never throttled
+assert.strictEqual(tierFor('GET', '/api/products'), 'read');
+assert.strictEqual(tierFor('OPTIONS', '/api/products'), 'read');
+
+// Loopback is exempt entirely — the limiter guards against remote brute force, and
+// throttling the local dashboard only broke it.
+function exempt(ip, headers) {
+  const proxied = Boolean(headers['x-forwarded-for'] || headers['cf-connecting-ip'] || headers['x-real-ip']);
+  return !proxied && (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1');
+}
+assert.strictEqual(exempt('::1', {}), true);
+assert.strictEqual(exempt('127.0.0.1', {}), true);
+// ...unless it only looks local because something proxied it
+assert.strictEqual(exempt('::1', { 'x-forwarded-for': '203.0.113.9' }), false);
+assert.strictEqual(exempt('192.168.1.50', {}), false);
+
+console.log('rate limit tiering: all 12 cases pass');

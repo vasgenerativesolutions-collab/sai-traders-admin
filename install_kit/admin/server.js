@@ -580,13 +580,24 @@ setInterval(() => {
 function rateLimit(req, res, next) {
   if (!req.path.startsWith('/api/')) return next();
 
-  let tier = 'read';
-  if (/^\/api\/(admin\/)?auth\//.test(req.path) || req.path.includes('/login')) tier = 'auth';
-  else if (req.method !== 'GET' && req.method !== 'OPTIONS') tier = 'mutate';
-
   const ip = (req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] ||
     String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
     req.ip || req.connection?.remoteAddress || 'unknown');
+
+  // Requests originating at this machine are not throttled. The limiter exists to blunt
+  // remote brute force; anyone at this keyboard already has more access than it protects.
+  // Throttling loopback only broke the local dashboard, which polls continuously.
+  const proxied = Boolean(req.headers['x-forwarded-for'] || req.headers['cf-connecting-ip'] || req.headers['x-real-ip']);
+  if (!proxied && (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1')) return next();
+
+  // Only a credential ATTEMPT belongs in the strict tier. A GET under /api/auth/ is a
+  // status read — the pairing screen polls /api/auth/device-pair-status every couple of
+  // seconds while it waits, which tripped the 10/min auth limit in about 20 seconds and
+  // made pairing impossible to complete.
+  let tier = 'read';
+  const isAuthPath = /^\/api\/(admin\/)?auth\//.test(req.path) || req.path.includes('/login');
+  if (isAuthPath && req.method !== 'GET' && req.method !== 'OPTIONS') tier = 'auth';
+  else if (req.method !== 'GET' && req.method !== 'OPTIONS') tier = 'mutate';
   const key = `${tier}:${ip}`;
   const now = Date.now();
   let b = rateBuckets.get(key);
