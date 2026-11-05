@@ -26,7 +26,8 @@ const SYNC_SPECS = [
   { type: 'file', src: 'package-lock.json', dest: 'package-lock.json' },
   { type: 'file', src: '.env.example', dest: '.env.example' },
   { type: 'file', src: 'TALLY_INITIAL_SETUP_GUIDE.md', dest: 'TALLY_INITIAL_SETUP_GUIDE.md' },
-  { type: 'file', src: 'DELETE_ALL_CUSTOM_GODOWNS.bat', dest: 'DELETE_ALL_CUSTOM_GODOWNS.bat' },
+  { type: 'file', src: 'TALLY_COMPANY_REBINDING_AND_CLEAN_INSTALL_GUIDE.md', dest: 'TALLY_COMPANY_REBINDING_AND_CLEAN_INSTALL_GUIDE.md' },
+  { type: 'file', src: 'CHECK_STORE_PC.bat', dest: 'CHECK_STORE_PC.bat' },
   { type: 'file', src: 'START_STORE_PC.bat', dest: 'START_STORE_PC.bat' },
   { type: 'file', src: 'START_SAI_TRADERS.bat', dest: 'START_SAI_TRADERS.bat' },
   { type: 'file', src: 'STOP_STORE_PC.bat', dest: 'STOP_STORE_PC.bat' },
@@ -38,6 +39,7 @@ const SYNC_SPECS = [
   { type: 'file', src: 'scripts/get_tunnel_url.js', dest: 'scripts/get_tunnel_url.js' },
   { type: 'file', src: 'scripts/store_supervisor.js', dest: 'scripts/store_supervisor.js' },
   { type: 'file', src: 'scripts/store_preflight.js', dest: 'scripts/store_preflight.js' },
+  { type: 'file', src: 'scripts/rebind_tally_company.js', dest: 'scripts/rebind_tally_company.js' },
   { type: 'file', src: 'scripts/stop_store_supervisor.js', dest: 'scripts/stop_store_supervisor.js' },
   { type: 'file', src: 'scripts/test_tally_quick.js', dest: 'scripts/test_tally_quick.js' }
 ];

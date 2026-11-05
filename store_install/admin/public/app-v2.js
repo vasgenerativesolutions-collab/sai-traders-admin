@@ -3088,8 +3088,8 @@ async function openGodownSetupModal(tallyInfo = null) {
 
   // Pre-fill if tallyInfo provided
   if (tallyInfo) {
-    if (compEl) compEl.textContent = tallyInfo.company || 'MIithun';
-    if (guidEl) guidEl.textContent = tallyInfo.guid || 'fda06c48-bc3f-443b-b079-7e19958fa0dd';
+    if (compEl) compEl.textContent = tallyInfo.company || defaultCompany;
+    if (guidEl) guidEl.textContent = tallyInfo.guid || defaultGuid;
     if (tagEl) {
       if (tallyInfo.firstTimeRegistration) {
         tagEl.textContent = 'Pairing Required';
