@@ -385,15 +385,41 @@ async function ensureStockGroup(name) {
     `<STOCKGROUP NAME="${escapeXml(clean)}" ACTION="Create"><NAME>${escapeXml(clean)}</NAME><PARENT/></STOCKGROUP>`);
 }
 
-/** The units of measure this company has. Diagnostic only — existence is proven by creating. */
+/**
+ * The units of measure this company has.
+ *
+ * FETCH returns nothing for units on this company, so this asks by native method,
+ * which is what TDL exposes for a unit object. Both the name and the ORIGINAL name
+ * are read, because Tally matches a duplicate on the original while a stock item
+ * must name the current one — a renamed unit makes those two different, which is
+ * exactly how "DUPLICATE ORIGINAL NAME" and "Unit does not exist" came back for the
+ * same word.
+ *
+ * The raw reply comes back too: when this list is empty the reply is the only thing
+ * that explains why, and it is cheaper to carry it than to ask the shop again.
+ */
 async function readUnits() {
-  const raw = await tally(collection('AllUnits', 'Unit', 'Name'));
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>AllUnits</ID></HEADER>
+<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES>
+<TDL><TDLMESSAGE><COLLECTION NAME="AllUnits" ISMODIFY="No">
+<TYPE>Unit</TYPE>
+<NATIVEMETHOD>Name</NATIVEMETHOD>
+<NATIVEMETHOD>OriginalName</NATIVEMETHOD>
+<NATIVEMETHOD>IsSimpleUnit</NATIVEMETHOD>
+</COLLECTION></TDLMESSAGE></TDL>
+</DESC></BODY></ENVELOPE>`;
+
+  const raw = await tally(xml);
   const units = [];
-  for (const b of raw.matchAll(/<UNIT\b[^>]*>([\s\S]*?)<\/UNIT>/gi)) {
-    const name = ((b[0].match(/NAME="([^"]+)"/i) || [, ''])[1] || tag(b[1], 'NAME')).trim();
-    if (name) units.push(name);
+  for (const b of String(raw).matchAll(/<UNIT\b[^>]*>([\s\S]*?)<\/UNIT>/gi)) {
+    const attr = (b[0].match(/NAME="([^"]+)"/i) || [, ''])[1];
+    const name = (attr || tag(b[1], 'NAME')).trim();
+    const original = tag(b[1], 'ORIGINALNAME').trim();
+    if (!name && !original) continue;
+    units.push(original && original.toLowerCase() !== name.toLowerCase() ? `${name} (was ${original})` : name);
   }
-  return units;
+  return { units, raw: String(raw) };
 }
 
 /**
@@ -487,12 +513,14 @@ async function createStockItem(p) {
   // the masters we can see, so the next failure is diagnosable from the job alone
   // instead of costing a round trip to the shop.
   if (!out.ok) {
-    let units = [];
-    try { units = await readUnits(); } catch (_) {}
+    let seen = { units: [], raw: "" };
+    try { seen = await readUnits(); } catch (_) {}
+    const units = seen.units;
     throw new Error(
       (out.message || 'Tally rejected the item') +
       ` — item="${name}" group="${group}" godown="${godown}" unit="${unit}" qty=${qty}` +
       ` — units in Tally: ${units.length ? units.join(', ') : 'none readable'}` +
+      (units.length ? '' : ` — unit read replied: ${seen.raw.replace(/\s+/g, ' ').slice(0, 300)}`) +
       ` — Tally replied: ${String(raw).replace(/\s+/g, ' ').slice(0, 300)}`
     );
   }
