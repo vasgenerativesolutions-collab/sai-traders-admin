@@ -14,6 +14,7 @@
  *
  *   node sai-agent.js            run it
  *   node sai-agent.js --reset    forget this machine's identity and enroll again
+ *   node sai-agent.js --restart  stop the copy already running here and take over
  *
  * Zero dependencies. Native Node only, so there is nothing to install and nothing to
  * go stale.
@@ -49,6 +50,7 @@ const UPDATE_CHECK_MS = 3600000; // how often a long-running agent looks for a f
 const STATE_DIR = path.join(process.env.PROGRAMDATA || os.homedir(), 'SaiAgent');
 const TOKEN_FILE = path.join(STATE_DIR, 'device.enc');
 const OUTBOX_FILE = path.join(STATE_DIR, 'outbox.json');
+const LOCK_FILE = path.join(STATE_DIR, 'agent.lock');
 
 // A short fingerprint of this file, reported on every heartbeat so the running
 // version is visible from the cloud instead of having to be read off the machine.
@@ -120,8 +122,14 @@ function callCloud(action, body, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     const url = new URL(`${FN}/${action}`);
-    const req = https.request({
+
+    // Honour the whole URL, not just its hostname. Forcing https on port 443 meant
+    // SAI_SUPABASE_URL could not point anywhere else — no local stub, no proxy, no
+    // self-hosted instance — and the override failed silently rather than loudly.
+    const transport = url.protocol === 'http:' ? http : https;
+    const req = transport.request({
       hostname: url.hostname,
+      port: url.port || undefined,
       path: url.pathname,
       method: 'POST',
       headers: {
@@ -537,7 +545,8 @@ const UPDATE_URL = process.env.SAI_UPDATE_URL ||
 
 function fetchText(url, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: timeoutMs }, (res) => {
+    const transport = String(url).startsWith('http://') ? http : https;
+    const req = transport.get(url, { timeout: timeoutMs }, (res) => {
       if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
       let d = '';
       res.on('data', (c) => (d += c));
@@ -584,6 +593,11 @@ async function selfUpdate() {
   }
 
   log('updated to the latest version — restarting');
+
+  // Hand the single-instance lock to the replacement before starting it, or it would
+  // see this process still alive and refuse to run — leaving no agent at all.
+  try { fs.unlinkSync(LOCK_FILE); } catch (_) {}
+
   const { spawn } = require('child_process');
   spawn(process.execPath, [me, ...process.argv.slice(2)], { stdio: 'inherit', detached: false })
     .on('exit', (code) => process.exit(code === null ? 0 : code));
@@ -683,6 +697,46 @@ async function heartbeat(token) {
   return { res, company, reachable };
 }
 
+// ---------------------------------------------------------------------------
+// One agent per machine.
+//
+// The installer starts the agent at login, so running it again by hand left two
+// copies polling the same shop. They stole each other's jobs, and — the reason this
+// cost a whole evening — closing the visible window left the invisible one running
+// old code, so a published fix appeared not to work.
+//
+// ponytail: a PID can in principle be reused by an unrelated program after a crash,
+// which would make us refuse to start. The agent writes its own start time beside the
+// PID and only yields to a lock that matches both, so a reused PID is not mistaken
+// for a live agent.
+// ---------------------------------------------------------------------------
+function claimSingleInstance() {
+  fs.mkdirSync(STATE_DIR, { recursive: true });
+
+  let held = null;
+  try { held = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8')); } catch (_) {}
+
+  if (held && held.pid && held.pid !== process.pid) {
+    let alive = false;
+    try { process.kill(held.pid, 0); alive = true; } catch (_) {}
+    if (alive) return { taken: true, pid: held.pid, since: held.startedAt };
+  }
+
+  fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
+  // Only ever release our own lock. After an update this process hands the lock to its
+  // replacement, so deleting it blindly on exit would leave the new agent unprotected.
+  const release = () => {
+    try {
+      const held = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+      if (held.pid === process.pid) fs.unlinkSync(LOCK_FILE);
+    } catch (_) {}
+  };
+  process.on('exit', release);
+  process.on('SIGINT', () => { release(); process.exit(0); });
+  process.on('SIGTERM', () => { release(); process.exit(0); });
+  return { taken: false };
+}
+
 async function main() {
   const reset = process.argv.includes('--reset');
   if (reset) {
@@ -690,6 +744,26 @@ async function main() {
   }
 
   banner(['SAI AGENT  ' + AGENT_VERSION, `${os.hostname()}  ·  Tally at ${TALLY_HOST}:${TALLY_PORT}`]);
+
+  // Refuse to be the second copy. Two agents on one shop is never what anyone wants,
+  // and a hidden one is worse than none. --restart takes over from the copy already
+  // running, so nobody has to hunt down an invisible process.
+  let lock = claimSingleInstance();
+  if (lock.taken && process.argv.includes('--restart')) {
+    log(`stopping the agent already running on this PC (process ${lock.pid})`);
+    try { process.kill(lock.pid); } catch (_) {}
+    for (let i = 0; i < 50 && lock.taken; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      lock = claimSingleInstance();
+    }
+  }
+  if (lock.taken) {
+    warn(`another agent is already running on this PC (process ${lock.pid}`
+      + (lock.since ? `, started ${lock.since.replace('T', ' ').slice(0, 16)}` : '') + ')');
+    warn('nothing to do here — close this window');
+    warn('to take over from it instead, run the agent again with --restart');
+    process.exit(0);
+  }
 
   // Before doing any work, make sure this is the current version.
   if (await selfUpdate()) return;

@@ -16,7 +16,8 @@
     "package:store": "node scripts/package_store_install.js",
     "eval": "node eval/run_eval.js",
     "check": "node scripts/check_system.js",
-    "preflight": "node scripts/store_preflight.js"
+    "preflight": "node scripts/store_preflight.js",
+    "test:agent": "node scripts/test_single_instance.js"
   },
   "build": {
     "appId": "com.saitraders.bridge",
