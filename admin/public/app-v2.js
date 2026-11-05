@@ -152,6 +152,20 @@ function showToast(message) {
 // -----------------------------------------------------------------------------
 // 1. Navigation Tabs
 // -----------------------------------------------------------------------------
+/**
+ * Has this product been removed from the catalogue?
+ *
+ * A product awaiting review is deliberately not visible to customers but is very much
+ * present. Treating is_active false as deleted hid items the shop had just created in
+ * Tally — the dashboard filtered them out as if someone had removed them.
+ */
+function isRemovedProduct(p) {
+  if (!p) return false;
+  if (p.status === 'deleted' || p.status === 'archived') return true;
+  if (p.status === 'pending_review') return false;
+  return p.is_active === false;
+}
+
 function setupNavigationTabs() {
   const tabBtns = document.querySelectorAll('.tab-btn');
   tabBtns.forEach(btn => {
@@ -360,7 +374,7 @@ async function loadStoredProducts(godown = null) {
     storedProducts = data.products || [];
 
     const activeProducts = storedProducts.filter(p => p.status !== 'deleted' && p.status !== 'archived' && p.is_active !== false);
-    const deletedProducts = storedProducts.filter(p => p.status === 'deleted' || p.status === 'archived' || p.is_active === false);
+    const deletedProducts = storedProducts.filter(isRemovedProduct);
     const inStockProducts = activeProducts.filter(p => (p.stock_quantity || 0) > 0);
     const outOfStockProducts = activeProducts.filter(p => (p.stock_quantity || 0) <= 0);
 
@@ -553,7 +567,7 @@ function renderInventoryGrid() {
     const name = (p.name || '').toLowerCase();
     const matchesSearch = !query || code.includes(query) || name.includes(query);
 
-    const isDeleted = Boolean(p.status === 'deleted' || p.status === 'archived' || p.is_active === false);
+    const isDeleted = isRemovedProduct(p);
 
     let matchesFilter = true;
     if (activeInventoryFilter === 'in_stock') {
@@ -589,7 +603,7 @@ function renderInventoryGrid() {
   }
 
   const renderSingleProductCard = (p) => {
-    const isDeleted = Boolean(p.status === 'deleted' || p.status === 'archived' || p.is_active === false);
+    const isDeleted = isRemovedProduct(p);
     const isGroup = Boolean(!isDeleted && p.is_group && p.variants && p.variants.length > 0);
     const activeVar = isGroup ? p.variants[0] : null;
 
@@ -2262,7 +2276,7 @@ function setupLiveStockPoller() {
 
 function handleLiveStockChange(code, oldQty, newQty, prodData) {
   // If product is deleted or archived, do not show live stock deduction toasts!
-  if (prodData && (prodData.status === 'archived' || prodData.status === 'deleted' || prodData.is_active === false || prodData.is_deleted)) {
+  if (prodData && (isRemovedProduct(prodData) || prodData.is_deleted)) {
     return;
   }
   // Update in-memory storedProducts

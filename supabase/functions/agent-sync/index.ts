@@ -457,7 +457,7 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
         price: 0,
         stock_quantity: sellable,
         is_active: false,
-        status: 'draft',
+        status: 'pending_review',
         item_created_in_tally: true,
         stock_added_in_tally: sellable > 0,
         tally_master_id: name,

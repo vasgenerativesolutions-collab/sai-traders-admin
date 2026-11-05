@@ -37,7 +37,7 @@ const sql = async (query) => {
   const block = src.slice(src.indexOf('let drafted = 0;'), src.indexOf('if (!error) drafted'));
   assert.ok(block, 'the drafting block was not found');
   assert.match(block, /is_active: false/, 'a drafted product must not be active');
-  assert.match(block, /status: 'draft'/, 'a drafted product must have draft status');
+  assert.match(block, /status: 'pending_review'/, 'a drafted product must be marked for review, not left as the default draft');
   assert.match(block, /price: 0/, 'a drafted product must not carry a made-up price');
   assert.match(block, /onConflict: 'sku', ignoreDuplicates: true/, 'drafting must never overwrite an edited product');
   console.log('ok   the agent writes drafts that are inactive, unlisted and unpriced');

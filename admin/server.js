@@ -55,6 +55,20 @@ const env = loadEnv();
 const { createClient } = require('@supabase/supabase-js');
 const SUPABASE_URL = env.SUPABASE_URL;
 const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+
+/**
+ * Has this product been removed from the catalogue?
+ *
+ * is_active alone does not answer it: a product awaiting review is deliberately not
+ * visible to customers but is very much present, and treating the two as the same
+ * hid items the shop had just created in Tally.
+ */
+function isRemovedProduct(p) {
+  if (!p) return false;
+  if (p.status === 'deleted' || p.status === 'archived') return true;
+  if (p.status === 'pending_review') return false;
+  return p.is_active === false;
+}
 const SUPABASE_ANON_KEY = env.SUPABASE_ANON_KEY || '';
 const supabaseAuth = createClient(SUPABASE_URL, SERVICE_KEY || SUPABASE_ANON_KEY);
 const GEMINI_API_KEY = env.GEMINI_API_KEY;
@@ -3004,7 +3018,7 @@ async function performMorningStockSync() {
         const stock = stockMap.get(sSku) || stockMap.get(sPart) || stockMap.get(saree.id);
         const expectedQty = stock ? stock.online_quantity : (saree.stock_quantity ?? 0);
 
-        const isSareeDeleted = saree.status === 'deleted' || saree.status === 'archived' || saree.is_active === false;
+        const isSareeDeleted = isRemovedProduct(saree);
 
         if (tallyItem) {
           // Item exists in Tally
@@ -4398,7 +4412,7 @@ app.get('/api/live-stock', async (req, res) => {
       activeGodown: requestedGodown,
       activeScope: liveScope,
       products: (products || []).map(p => {
-        const isDel = p.status === 'archived' || p.status === 'deleted' || p.is_active === false;
+        const isDel = isRemovedProduct(p);
         const code = (p.tally_part_number || p.sku || '').trim();
         const codeKey = code.toLowerCase();
         const nameKey = (p.name || '').toLowerCase().trim();

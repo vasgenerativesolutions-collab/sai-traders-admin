@@ -20,7 +20,8 @@
     "test:agent": "node scripts/test_single_instance.js",
     "test:tally": "node scripts/test_master_outcomes.js",
     "test:binding": "node scripts/test_company_binding.js",
-    "test:drafts": "node scripts/test_draft_safety.js"
+    "test:drafts": "node scripts/test_draft_safety.js",
+    "archive-orphans": "node scripts/archive_orphaned_products.js"
   },
   "build": {
     "appId": "com.saitraders.bridge",
