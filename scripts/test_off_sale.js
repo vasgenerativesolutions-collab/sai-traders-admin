@@ -38,7 +38,15 @@ let restore = null;
   const live = await api(`saree_catalog?select=*&shop_id=eq.${shop.id}&status=not.in.(archived,deleted)&order=sku`)
     .then((r) => r.json());
   const subject = live.find((p) => (Number(p.stock_quantity) || 0) > 0) || live[0];
-  assert.ok(subject, 'need a product to test with');
+
+  // Every saree being off sale is a legitimate state for a shop to be in, so there is
+  // nothing to test rather than something broken. Taking a product off sale to test it
+  // would also mean taking a real saree out of the window to prove the shutter works.
+  if (!subject) {
+    console.log('skip  no saree is on sale, so there is nothing to take off sale');
+    console.log('\nnothing to check');
+    return;
+  }
 
   restore = {
     id: subject.id,
@@ -127,14 +135,30 @@ let restore = null;
   .catch((e) => { console.error('\nFAILED: ' + e.message); process.exitCode = 1; })
   .finally(async () => {
     if (restore) {
-      await api(`saree_catalog?id=eq.${restore.id}`, {
-        method: 'PATCH', headers: H,
+      // Verify the restore instead of announcing it. A cleanup that reports success
+      // without checking leaves a real product off sale and says it put it back — the
+      // test then looks like it passed while the shop cannot sell the saree.
+      const res = await api(`saree_catalog?id=eq.${restore.id}`, {
+        method: 'PATCH',
+        headers: { ...H, Prefer: 'return=representation' },
         body: JSON.stringify({
           status: restore.status, is_active: restore.is_active,
           stock_quantity: restore.stock_quantity, listing_notes: restore.listing_notes,
           updated_at: new Date().toISOString(),
         }),
       });
-      console.log('restored the product to how it was (its embedding is rebuilt by the next reembed)');
+
+      const back = res.ok ? (await res.json())[0] : null;
+      if (back && back.status === restore.status && back.is_active === restore.is_active) {
+        console.log(`restored ${back.sku} to ${back.status}/active=${back.is_active} (its embedding is rebuilt by the next reembed)`);
+      } else {
+        console.error(
+          `\nCOULD NOT RESTORE ${restore.id}: it is still off sale.\n` +
+          `  wanted status=${restore.status} is_active=${restore.is_active}\n` +
+          `  got    ${back ? `status=${back.status} is_active=${back.is_active}` : `HTTP ${res.status} ${(await res.text()).slice(0, 160)}`}\n` +
+          `  Put it back by hand before the shop tries to sell it.`
+        );
+        process.exitCode = 1;
+      }
     }
   });
