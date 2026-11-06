@@ -3693,7 +3693,13 @@ app.get('/api/products', requireAdminAuth, async (req, res) => {
     // returning archived ones is why a previous Tally company's items kept showing.
     const scope = shopFilterFor(req);
     const includeRemoved = req.query.include_removed === 'true';
-    const lifecycle = includeRemoved ? '' : '&status=not.in.(archived,deleted)';
+
+    // Hide only what is BOTH off sale and gone from Tally — products left behind by a
+    // previous company. A saree the shop still holds stays visible even when withdrawn
+    // from online sale, or taking one off sale would make it disappear with no way back.
+    const lifecycle = includeRemoved
+      ? ''
+      : '&or=(status.not.in.(archived,deleted),item_created_in_tally.is.true)';
 
     const [pRes, vRes, spRes, matrixRes, unallocRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?${scope}${lifecycle}&order=created_at.desc`, {
@@ -4425,7 +4431,7 @@ app.get('/api/live-stock', requireAdminAuth, async (req, res) => {
   try {
     const requestedGodown = (req.query.godown || await getTargetGodown() || 'Online_saree').trim();
     const [pRes, oRes, spRes, matrixRes, unallocRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?${shopFilterFor(req)}&status=not.in.(archived,deleted)&select=id,sku,tally_part_number,name,stock_quantity,attributes_json,price,status,is_active,updated_at&order=created_at.desc`, {
+      fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?${shopFilterFor(req)}&or=(status.not.in.(archived,deleted),item_created_in_tally.is.true)&select=id,sku,tally_part_number,name,stock_quantity,attributes_json,price,status,is_active,updated_at&order=created_at.desc`, {
         headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
       }),
       fetch(`${SUPABASE_URL}/rest/v1/orders?select=id,order_number,items,total_amount,payment_status,status,created_at&order=created_at.desc&limit=1`, {

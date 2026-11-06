@@ -96,6 +96,12 @@ const apply = process.argv.includes('--yes');
       status: 'archived',
       is_active: false,
       stock_quantity: 0,
+      // Record that Tally no longer holds these. The dashboard uses this to tell a
+      // product left behind by a previous company, which should disappear, from one the
+      // shop still holds but has withdrawn from sale, which must stay visible so it can
+      // be put back. Leaving the flag set made the old company's items reappear.
+      item_created_in_tally: false,
+      stock_added_in_tally: false,
       listing_notes: 'Archived automatically: no matching item in the shop\'s current Tally company.',
       updated_at: new Date().toISOString(),
     }),
