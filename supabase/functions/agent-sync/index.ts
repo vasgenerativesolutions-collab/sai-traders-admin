@@ -249,6 +249,250 @@ async function setStock(req: Request, body: Record<string, unknown>) {
   return json({ ok: true, jobId: job.id, item: tallyName, godown, targetQuantity: Math.round(target) });
 }
 
+/**
+ * Whether a saree may go on sale, and putting it there if so.
+ *
+ * Five conditions are enforced in the database by trg_enforce_listing_rules. They are
+ * satisfied at different moments by different people, so every action that can complete
+ * the set calls this — otherwise a saree becomes ready and sits unlisted because nothing
+ * looked again.
+ */
+async function listIfReady(sareeId: string) {
+  const { data: row } = await db
+    .from('saree_catalog')
+    .select('id, sku, tally_part_number, name, price, image_urls, status, is_active, item_created_in_tally, stock_added_in_tally')
+    .eq('id', sareeId)
+    .maybeSingle();
+
+  if (!row) return { listed: false, needs: ['the product no longer exists'] };
+  if (row.status === 'archived' || row.status === 'deleted') return { listed: false, offSale: true, needs: [] };
+
+  const tallyCode = row.tally_part_number || row.sku;
+  const { data: videos } = await db
+    .from('video_item')
+    .select('id, video_record!inner(is_active)')
+    .eq('product_code', tallyCode)
+    .eq('verified', true)
+    .limit(1);
+  const hasVideo = (videos || []).some((v: Record<string, unknown>) =>
+    (v.video_record as Record<string, unknown> | null)?.is_active === true);
+
+  const needs: string[] = [];
+  const name = String(row.name || '').trim();
+  if (!name) needs.push('a name');
+  else if (name.toLowerCase() === String(tallyCode).toLowerCase()) needs.push('a name customers will understand');
+  if (!(Number(row.price) > 0)) needs.push('a selling price');
+  if (!Array.isArray(row.image_urls) || row.image_urls.length < 1) needs.push('at least one photo');
+  if (!hasVideo) needs.push('a verified video');
+  if (!row.item_created_in_tally || !row.stock_added_in_tally) needs.push('stock confirmed in Tally');
+
+  if (needs.length) return { listed: row.status === 'listed', needs };
+  if (row.status === 'listed' && row.is_active) return { listed: true, needs: [] };
+
+  const { error } = await db.from('saree_catalog')
+    .update({ status: 'listed', is_active: true, updated_at: new Date().toISOString() })
+    .eq('id', sareeId);
+
+  if (error) return { listed: false, needs: [`the database refused: ${error.message}`] };
+  return { listed: true, needs: [], justListed: true };
+}
+
+/** Find one of this member's products by sku, part number or id. */
+async function memberProduct(shopIds: string[], ref: string) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref);
+  let q = db.from('saree_catalog')
+    .select('id, shop_id, sku, tally_part_number, name, price, image_urls, status')
+    .in('shop_id', shopIds);
+  q = isUuid ? q.eq('id', ref) : q.or(`sku.eq.${ref},tally_part_number.eq.${ref}`);
+  const { data } = await q.limit(1);
+  return (data || [])[0] || null;
+}
+
+/**
+ * Change what a customer sees.
+ *
+ * The same whitelist as the server route, for the same reasons: sku and
+ * tally_part_number are the link to Tally and changing them would strand the saree;
+ * stock_quantity belongs to Tally; and whether a saree is on sale has its own action so
+ * that withdrawing one is never a side effect of an edit.
+ */
+async function updateProduct(req: Request, body: Record<string, unknown>) {
+  const member = await authenticateMember(req);
+  if (!member) return json({ error: 'sign_in_required' }, 401);
+
+  const saree = await memberProduct(member.shopIds, String(body.id || body.code || '').trim());
+  if (!saree) return json({ error: 'unknown_product' }, 404);
+
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+  if (typeof body.name === 'string') {
+    const name = body.name.trim();
+    if (!name) return json({ error: 'name_required' }, 400);
+    patch.name = name.slice(0, 140);
+  }
+  if (typeof body.description === 'string') patch.description = body.description.trim().slice(0, 2000);
+
+  for (const field of ['price', 'mrp']) {
+    const raw = body[field];
+    if (raw === undefined || raw === null || raw === '') continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) return json({ error: `${field}_invalid` }, 400);
+    patch[field] = value;
+  }
+  for (const field of ['fabric', 'color_primary', 'color_secondary', 'weave_style']) {
+    if (typeof body[field] === 'string') patch[field] = String(body[field]).trim().slice(0, 80);
+  }
+
+  if (Object.keys(patch).length === 1) return json({ error: 'nothing_to_change' }, 400);
+
+  const { error } = await db.from('saree_catalog').update(patch).eq('id', saree.id);
+  if (error) return json({ error: 'save_failed', detail: error.message }, 500);
+
+  const { listed, needs } = await listIfReady(saree.id);
+  const shown = String(patch.name || saree.name);
+
+  return json({
+    ok: true, listed, needs, sku: saree.sku, name: shown,
+    message: listed
+      ? `Saved. "${shown}" is on sale to online customers.`
+      : `Saved — customers will see "${shown}". Still needed before it goes on sale: ${needs.join(', ')}.`,
+  });
+}
+
+/**
+ * Take a saree off online sale, or put it back.
+ *
+ * Tally is never touched: it keeps whatever it holds, so the counter can still sell the
+ * saree in the shop. The record stays too, so photos and price survive.
+ */
+async function setOffSale(req: Request, body: Record<string, unknown>) {
+  const member = await authenticateMember(req);
+  if (!member) return json({ error: 'sign_in_required' }, 401);
+
+  const saree = await memberProduct(member.shopIds, String(body.id || body.code || '').trim());
+  if (!saree) return json({ error: 'unknown_product' }, 404);
+
+  const restore = body.restore === true;
+
+  if (restore) {
+    const { error } = await db.from('saree_catalog')
+      .update({ status: 'draft', is_active: true, listing_notes: null, updated_at: new Date().toISOString() })
+      .eq('id', saree.id);
+    if (error) return json({ error: 'restore_failed', detail: error.message }, 500);
+
+    const { listed, needs } = await listIfReady(saree.id);
+    return json({
+      ok: true, listed, needs, sku: saree.sku,
+      message: listed
+        ? `${saree.sku} is back on sale.`
+        : `${saree.sku} is back in the catalogue. Still needed before it goes on sale: ${needs.join(', ')}.`,
+    });
+  }
+
+  // The embedding goes too, or an image search would still surface a saree nobody can buy.
+  const { error } = await db.from('saree_catalog').update({
+    is_active: false,
+    status: 'archived',
+    stock_quantity: 0,
+    embedding: null,
+    embedding_v2: null,
+    listing_notes: `Taken off online sale on ${new Date().toISOString().slice(0, 10)}. Tally still holds this item.`,
+    updated_at: new Date().toISOString(),
+  }).eq('id', saree.id);
+
+  if (error) return json({ error: 'off_sale_failed', detail: error.message }, 500);
+
+  return json({
+    ok: true, offSale: true, sku: saree.sku,
+    message: `${saree.sku} is off online sale. Tally still holds it, so the counter can keep selling it in the shop.`,
+  });
+}
+
+/**
+ * Record a video for a saree, which is one of the five listing conditions.
+ *
+ * The product code must be the Tally code: the listing guard matches on it, so a video
+ * filed under anything else satisfies nothing and gives no clue why.
+ */
+async function addVideo(req: Request, body: Record<string, unknown>) {
+  const member = await authenticateMember(req);
+  if (!member) return json({ error: 'sign_in_required' }, 401);
+
+  const code = String(body.product_code || body.code || '').trim();
+  if (!code) return json({ error: 'product_code_required' }, 400);
+
+  const saree = await memberProduct(member.shopIds, code);
+  if (!saree) return json({ error: 'unknown_product' }, 404);
+
+  const tallyCode = saree.tally_part_number || saree.sku;
+  const videoId = String(body.video_id || `vid_${String(tallyCode).toLowerCase()}_${Date.now()}`).trim();
+  const sourceUrl = typeof body.source_url === 'string' ? body.source_url.trim().slice(0, 500) : null;
+
+  const { error: recErr } = await db.from('video_record').upsert({
+    video_id: videoId,
+    product_code: tallyCode,
+    source_url: sourceUrl,
+    is_active: true,
+  }, { onConflict: 'video_id' });
+  if (recErr) return json({ error: 'video_record_failed', detail: recErr.message }, 500);
+
+  const { error: itemErr } = await db.from('video_item').upsert({
+    video_id: videoId,
+    product_code: tallyCode,
+    verified: true,
+    notes: typeof body.notes === 'string' ? body.notes.slice(0, 500) : null,
+    // video_item is unique on (video_id, product_code), not on video_id alone.
+  }, { onConflict: 'video_id,product_code' });
+  if (itemErr) return json({ error: 'video_item_failed', detail: itemErr.message }, 500);
+
+  const { listed, needs } = await listIfReady(saree.id);
+  return json({
+    ok: true, videoId, listed, needs,
+    message: listed
+      ? `Video added, and ${saree.sku} is now on sale.`
+      : `Video added. Still needed before it goes on sale: ${needs.join(', ')}.`,
+  });
+}
+
+/**
+ * Attach an uploaded photo to a saree.
+ *
+ * The browser uploads the file to storage itself under the member's own session; this
+ * records the URL against the product, because the catalogue is not writable from a
+ * browser and should not be.
+ */
+async function attachPhoto(req: Request, body: Record<string, unknown>) {
+  const member = await authenticateMember(req);
+  if (!member) return json({ error: 'sign_in_required' }, 401);
+
+  const saree = await memberProduct(member.shopIds, String(body.id || body.code || '').trim());
+  if (!saree) return json({ error: 'unknown_product' }, 404);
+
+  const url = String(body.url || '').trim();
+  // Only a URL inside this project's own public catalogue bucket. Anything else would
+  // let a browser point a product at any image on the internet.
+  const expected = `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/saree-catalog-images/`;
+  if (!url.startsWith(expected)) return json({ error: 'url_not_in_catalogue_bucket' }, 400);
+
+  const existing = Array.isArray(saree.image_urls) ? saree.image_urls as string[] : [];
+  if (existing.includes(url)) return json({ ok: true, alreadyAttached: true, image_urls: existing });
+  if (existing.length >= 12) return json({ error: 'too_many_photos' }, 400);
+
+  const image_urls = [...existing, url];
+  const { error } = await db.from('saree_catalog')
+    .update({ image_urls, updated_at: new Date().toISOString() })
+    .eq('id', saree.id);
+  if (error) return json({ error: 'attach_failed', detail: error.message }, 500);
+
+  const { listed, needs } = await listIfReady(saree.id);
+  return json({
+    ok: true, image_urls, listed, needs,
+    message: listed
+      ? `Photo added, and ${saree.sku} is now on sale.`
+      : `Photo added. Still needed before it goes on sale: ${needs.join(', ')}.`,
+  });
+}
+
 /** How a queued job is getting on, for the member who asked for it. */
 async function jobStatus(req: Request, body: Record<string, unknown>) {
   const member = await authenticateMember(req);
@@ -798,6 +1042,10 @@ Deno.serve(async (req) => {
       case 'heartbeat': return await heartbeat(body);
       case 'set-stock': return await setStock(req, body);
       case 'job-status': return await jobStatus(req, body);
+      case 'update-product': return await updateProduct(req, body);
+      case 'set-off-sale': return await setOffSale(req, body);
+      case 'add-video': return await addVideo(req, body);
+      case 'attach-photo': return await attachPhoto(req, body);
       default: return json({ error: 'unknown_action', action }, 404);
     }
   } catch (err) {

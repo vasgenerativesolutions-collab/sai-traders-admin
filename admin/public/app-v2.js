@@ -218,6 +218,111 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
       };
     },
 
+    // The godowns Tally reports, and which one online stock comes from.
+    async godowns() {
+      const [shops, settings] = await Promise.all([
+        this.rest('shops?select=settings&limit=1'),
+        this.rest('app_settings?select=value&key=eq.tally_godown_stock_matrix'),
+      ]);
+      const online = (shops[0] && shops[0].settings && shops[0].settings.online_godown) || '';
+
+      // Every godown name any item is placed in, from the last reading.
+      const names = new Set();
+      if (online) names.add(online);
+      try {
+        const matrix = JSON.parse(settings[0] ? settings[0].value : '{}');
+        for (const godowns of Object.values(matrix)) {
+          for (const g of Object.keys(godowns || {})) names.add(g);
+        }
+      } catch (_) {}
+
+      return {
+        success: true,
+        activeGodown: online,
+        isConfigured: Boolean(online),
+        godowns: [...names].map((name) => ({ name, parent: null })),
+        godownHierarchy: {},
+      };
+    },
+
+    // Sarees Tally has sent that still need details before they can be sold.
+    async newStock() {
+      const rows = await this.rest(
+        'saree_catalog?select=id,sku,tally_part_number,name,price,stock_quantity,status,image_urls' +
+        '&status=in.(pending_review,draft)&is_active=eq.false&order=created_at.desc&limit=50'
+      );
+      return { success: true, items: rows, count: rows.length };
+    },
+
+    async videos() {
+      const rows = await this.rest('video_record?select=*&order=created_at.desc&limit=100');
+      return { success: true, videos: rows, records: rows };
+    },
+
+    // Edits, withdrawal and video all go through the function: the catalogue is not
+    // writable from a browser, and should not be.
+    async editProduct(code, fields) {
+      const res = await this.fn('update-product', { code, ...fields });
+      if (!res.ok) return { success: false, error: res.body.error || `Could not save (${res.status})` };
+      return { success: true, ...res.body, product: { name: res.body.name, sku: res.body.sku } };
+    },
+
+    async offSale(code, restore) {
+      const res = await this.fn('set-off-sale', { code, restore: Boolean(restore) });
+      if (!res.ok) return { success: false, error: res.body.error || `Could not change it (${res.status})` };
+      return { success: true, ...res.body };
+    },
+
+    async addVideo(payload) {
+      const res = await this.fn('add-video', payload);
+      if (!res.ok) return { success: false, error: res.body.error || `Could not add the video (${res.status})` };
+      return { success: true, ...res.body };
+    },
+
+    // A photo goes straight to storage under the member's own session, then the function
+    // records the URL against the product.
+    async uploadPhoto(payload) {
+      const code = payload.sku || payload.code || payload.productCode;
+      const dataUrl = payload.imageBase64 || payload.image || payload.dataUrl || '';
+      if (!code) return { success: false, error: 'Which saree is this photo for?' };
+      if (!dataUrl) return { success: false, error: 'No image was supplied' };
+
+      const match = /^data:(image\/[a-z+]+);base64,(.*)$/i.exec(dataUrl);
+      if (!match) return { success: false, error: 'That file is not an image' };
+      const [, mime, b64] = match;
+
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      if (bytes.length > 8 * 1024 * 1024) return { success: false, error: 'That photo is larger than 8 MB' };
+
+      const ext = mime.split('/')[1].replace('jpeg', 'jpg').replace('+xml', '');
+      const safe = String(code).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const objectPath = `${safe}/${Date.now()}.${ext}`;
+
+      const token = await this.token();
+      const put = await originalFetch(
+        `${window.SAI_SUPABASE_URL}/storage/v1/object/saree-catalog-images/${objectPath}`,
+        {
+          method: 'POST',
+          headers: {
+            apikey: window.SAI_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${token}`,
+            'Content-Type': mime,
+            'x-upsert': 'true',
+          },
+          body: bytes,
+        }
+      );
+      if (!put.ok) {
+        const detail = await put.text();
+        return { success: false, error: `The photo could not be uploaded: ${detail.slice(0, 120)}` };
+      }
+
+      const url = `${window.SAI_SUPABASE_URL}/storage/v1/object/public/saree-catalog-images/${objectPath}`;
+      const res = await this.fn('attach-photo', { code, url });
+      if (!res.ok) return { success: false, error: res.body.error || 'The photo uploaded but could not be attached' };
+      return { success: true, url, publicUrl: url, ...res.body };
+    },
+
     // Pair a store PC by the code it displays.
     async pair(code) {
       const res = await this.fn('approve', { code });
@@ -238,6 +343,32 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
       if (path === '/api/adjust-tally-stock' && method === 'POST') {
         const body = JSON.parse((options && options.body) || '{}');
         return SERVERLESS.reply(await SERVERLESS.setStock(body));
+      }
+
+      if (path === '/api/admin/godowns/list') return SERVERLESS.reply(await SERVERLESS.godowns());
+      if (path === '/api/new-stock') return SERVERLESS.reply(await SERVERLESS.newStock());
+      if (path === '/api/videos' && method === 'GET') return SERVERLESS.reply(await SERVERLESS.videos());
+
+      if (path === '/api/videos' && method === 'POST') {
+        const body = JSON.parse((options && options.body) || '{}');
+        return SERVERLESS.reply(await SERVERLESS.addVideo(body));
+      }
+
+      if (path === '/api/upload-photo' && method === 'POST') {
+        const body = JSON.parse((options && options.body) || '{}');
+        return SERVERLESS.reply(await SERVERLESS.uploadPhoto(body));
+      }
+
+      // /api/products/<code> — edit, withdraw from sale, or put back.
+      const productMatch = path.match(/^\/api\/products\/([^/]+)(\/restore)?$/);
+      if (productMatch) {
+        const code = decodeURIComponent(productMatch[1]);
+        if (productMatch[2]) return SERVERLESS.reply(await SERVERLESS.offSale(code, true));
+        if (method === 'PATCH') {
+          const body = JSON.parse((options && options.body) || '{}');
+          return SERVERLESS.reply(await SERVERLESS.editProduct(code, body));
+        }
+        if (method === 'DELETE') return SERVERLESS.reply(await SERVERLESS.offSale(code, false));
       }
 
       if (path === '/api/auth/device-pair' && method === 'POST') {

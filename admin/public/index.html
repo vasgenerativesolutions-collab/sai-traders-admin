@@ -1032,69 +1032,7 @@
     <!-- =========================================================================
          ZEE5 ACTIVATION SCREEN: 6-CHARACTER DEVICE PAIRING & GODOWN LOCK
          ========================================================================= -->
-    <div id="stepZee5PairCard" class="zee5-card">
-      <div class="zee5-icon-wrap">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect width="20" height="14" x="2" y="3" rx="2"/>
-          <line x1="8" y1="21" x2="16" y2="21"/>
-          <line x1="12" y1="17" x2="12" y2="21"/>
-        </svg>
-      </div>
 
-      <h2 style="margin:0 0 6px 0; font-size:22px; font-weight:800; color:#ffffff; letter-spacing:-0.025em;">Connect This Store PC</h2>
-      <p style="margin:0 0 16px 0; font-size:13px; color:#94a3b8; font-weight:500;">
-        Enter this 6-character code on your Admin Console to pair and lock this terminal.
-      </p>
-
-      <!-- 6-Character Code Display -->
-      <div id="zee5CodeBox" class="zee5-code-box">
-        <div class="zee5-code-char pulse-char">-</div>
-        <div class="zee5-code-char pulse-char">-</div>
-        <div class="zee5-code-char pulse-char">-</div>
-        <div class="zee5-code-separator">-</div>
-        <div class="zee5-code-char pulse-char">-</div>
-        <div class="zee5-code-char pulse-char">-</div>
-        <div class="zee5-code-char pulse-char">-</div>
-      </div>
-
-      <!-- Status Indicator Pill -->
-      <div id="zee5StatusBadge" class="zee5-status-pill">
-        <span class="pulse-dot"></span>
-        <span>Waiting for admin approval...</span>
-      </div>
-
-      <div id="zee5TimerText" style="font-family:var(--font-mono); font-size:11.5px; color:#64748b; margin-bottom:18px;">
-        Code expires in 15:00
-      </div>
-
-      <!-- Pairing Instructions -->
-      <div class="zee5-steps-card">
-        <div class="zee5-step-item">
-          <span class="zee5-step-num">1</span>
-          <span>Open <strong>Sai Traders Admin Console</strong> on an authorized laptop / PC.</span>
-        </div>
-        <div class="zee5-step-item">
-          <span class="zee5-step-num">2</span>
-          <span>Click <strong>"Pair PC"</strong> in the top header and enter this 6-character code.</span>
-        </div>
-        <div class="zee5-step-item">
-          <span class="zee5-step-num">3</span>
-          <span>Select the <strong>Godown storage</strong> to lock to this terminal.</span>
-        </div>
-      </div>
-
-      <!-- Action Buttons -->
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <button type="button" class="btn btn-outline" onclick="generateZee5PairCode()" style="width:100%; height:38px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:12.5px;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-          <span>↻ Refresh / Generate New Code</span>
-        </button>
-
-        <button type="button" onclick="toggleDirectAdminLogin(true)" style="background:transparent; border:none; color:#60a5fa; font-size:12.5px; cursor:pointer; font-weight:600; padding:8px 0; text-decoration:underline;">
-          Admin Direct Sign In (Email &amp; Password) →
-        </button>
-      </div>
-    </div>
 
     <!-- Hidden Legacy Store Card Container -->
     <div id="step1StoreCard" style="display:none;"></div>
@@ -1144,12 +1082,9 @@
     <!-- =========================================================================
          STEP 2 CONTAINER: PURE SUPABASE AUTHENTICATION (FOR ADMINS)
          ========================================================================= -->
-    <div id="step2AuthCard" class="cl-card" style="width:100%; max-width:440px; box-sizing:border-box; position:relative; z-index:1; display:none;">
-      <div style="margin-bottom:14px; text-align:left;">
-        <a href="javascript:void(0)" onclick="toggleDirectAdminLogin(false)" style="font-size:12px; color:#60a5fa; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
-          ← Back to Device Activation Code
-        </a>
-      </div>
+    <!-- Signing in is the first screen. The store PC code is asked for straight
+         after it, and only when no PC is reporting. -->
+    <div id="step2AuthCard" class="cl-card" style="width:100%; max-width:440px; box-sizing:border-box; position:relative; z-index:1;">
 
       <div style="margin-bottom:18px; text-align:left;">
         <h2 style="margin:0 0 4px 0; font-size:20px; font-weight:800; color:#ffffff; letter-spacing:-0.025em;">Admin Sign In</h2>
@@ -2682,190 +2617,27 @@
       if (appContainer) appContainer.style.display = 'none';
       if (authScreen) authScreen.style.display = 'flex';
 
-      const pairCard = document.getElementById('stepZee5PairCard');
+      // Signing out returns to the sign-in card, not to terminal activation. That
+      // screen asked the store server for a code so the browser could become a till
+      // terminal, which is not how pairing works any more — and on a dashboard hosted
+      // without a server it was the first thing anyone saw, as an error.
       const authCard = document.getElementById('step2AuthCard');
+      const pairStep = document.getElementById('step3PairCard');
       const stepText = document.getElementById('stepIndicatorText');
 
-      if (pairCard) pairCard.style.display = 'block';
-      if (authCard) authCard.style.display = 'none';
-      if (stepText) stepText.innerText = 'Device Activation: Pair with Admin Console';
+      if (authCard) authCard.style.display = 'block';
+      if (pairStep) pairStep.style.display = 'none';
+      if (stepText) stepText.innerText = 'Sign in to continue';
 
       const badge = document.getElementById('supabaseUserBadge');
       if (badge) badge.style.display = 'none';
-
-      initZee5DevicePairing();
     }
 
     // =========================================================================
     // ZEE5 6-CHARACTER DEVICE PAIRING LOGIC
     // =========================================================================
-    let zee5PollTimer = null;
-    let zee5CountdownTimer = null;
-    let currentPairCode = null;
 
-    async function initZee5DevicePairing() {
-      const existingToken = localStorage.getItem('sai_device_token');
-      if (existingToken) {
-        try {
-          const res = await fetch('/api/auth/device-session', {
-            headers: { 'x-device-token': existingToken }
-          });
-          const data = await res.json();
-          if (data.success && data.device && data.device.status === 'active') {
-            window.isDeviceLocked = true;
-            window.lockedGodown = data.device.godown;
-            window.deviceName = data.device.deviceName;
-            localStorage.setItem('sai_active_store', JSON.stringify({
-              name: data.device.deviceName,
-              godown: data.device.godown,
-              locked: true
-            }));
-            revealDashboard({ id: data.device.id, email: data.device.deviceName }, 'device');
-            return;
-          } else {
-            localStorage.removeItem('sai_device_token');
-          }
-        } catch (err) {
-          console.warn('[Zee5] Error validating device session:', err);
-        }
-      }
-
-      await generateZee5PairCode();
-    }
-
-    window.generateZee5PairCode = async function() {
-      try {
-        if (zee5PollTimer) clearInterval(zee5PollTimer);
-        if (zee5CountdownTimer) clearInterval(zee5CountdownTimer);
-
-        const storedDevId = localStorage.getItem('sai_device_id') || ('term_' + Math.random().toString(36).substring(2, 9));
-        localStorage.setItem('sai_device_id', storedDevId);
-
-        const res = await fetch('/api/auth/device-pair-code', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: storedDevId,
-            deviceName: 'Store Terminal PC',
-            platform: navigator.platform || 'PC'
-          })
-        });
-
-        const data = await res.json();
-        if (!data.success || !data.code) {
-          throw new Error(data.error || 'Failed to generate pairing code');
-        }
-
-        currentPairCode = data.code;
-        renderZee5Code(currentPairCode);
-        startZee5Countdown(data.expiresInSeconds || 900);
-        startZee5Polling(currentPairCode, storedDevId);
-      } catch (err) {
-        console.error('[Zee5] Pairing code error:', err);
-        const codeBox = document.getElementById('zee5CodeBox');
-        if (codeBox) codeBox.innerHTML = `<span style="color:#f87171; font-size:14px;">Error: ${err.message}</span>`;
-      }
-    };
-
-    function renderZee5Code(code) {
-      const clean = code.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-      const part1 = clean.slice(0, 3);
-      const part2 = clean.slice(3, 6);
-
-      const html = `
-        <div class="zee5-code-char pulse-char">${part1[0] || '-'}</div>
-        <div class="zee5-code-char pulse-char">${part1[1] || '-'}</div>
-        <div class="zee5-code-char pulse-char">${part1[2] || '-'}</div>
-        <div class="zee5-code-separator">-</div>
-        <div class="zee5-code-char pulse-char">${part2[0] || '-'}</div>
-        <div class="zee5-code-char pulse-char">${part2[1] || '-'}</div>
-        <div class="zee5-code-char pulse-char">${part2[2] || '-'}</div>
-      `;
-      const codeBox = document.getElementById('zee5CodeBox');
-      if (codeBox) codeBox.innerHTML = html;
-    }
-
-    function startZee5Countdown(totalSeconds) {
-      let remaining = totalSeconds;
-      const timerEl = document.getElementById('zee5TimerText');
-      const updateText = () => {
-        const mins = Math.floor(remaining / 60);
-        const secs = remaining % 60;
-        if (timerEl) timerEl.innerText = `Code expires in ${mins}:${secs < 10 ? '0' : ''}${secs}`;
-      };
-      updateText();
-
-      zee5CountdownTimer = setInterval(() => {
-        remaining--;
-        if (remaining <= 0) {
-          clearInterval(zee5CountdownTimer);
-          if (timerEl) timerEl.innerText = 'Code expired. Click Refresh to generate new code.';
-          if (zee5PollTimer) clearInterval(zee5PollTimer);
-        } else {
-          updateText();
-        }
-      }, 1000);
-    }
-
-    function startZee5Polling(code, deviceId) {
-      if (zee5PollTimer) clearInterval(zee5PollTimer);
-
-      zee5PollTimer = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/auth/device-pair-status?code=${encodeURIComponent(code)}&deviceId=${encodeURIComponent(deviceId)}`);
-          const data = await res.json();
-          if (data.status === 'paired' && data.deviceToken) {
-            clearInterval(zee5PollTimer);
-            if (zee5CountdownTimer) clearInterval(zee5CountdownTimer);
-
-            localStorage.setItem('sai_device_token', data.deviceToken);
-            document.cookie = `sai_device_token=${data.deviceToken}; Path=/; SameSite=Lax; Max-Age=31536000`;
-            localStorage.setItem('sai_active_store', JSON.stringify({
-              name: data.deviceName || 'Store Terminal',
-              godown: data.godown,
-              locked: true
-            }));
-
-            window.isDeviceLocked = true;
-            window.lockedGodown = data.godown;
-            window.deviceName = data.deviceName;
-
-            const badge = document.getElementById('zee5StatusBadge');
-            if (badge) {
-              badge.innerHTML = `<span style="color:#10b981; font-weight:700;">✔ Device Authorized! Unlocking ${data.godown}...</span>`;
-            }
-
-            setTimeout(() => {
-              revealDashboard({ id: deviceId, email: data.deviceName }, 'device');
-            }, 1200);
-          } else if (data.status === 'expired' || data.status === 'invalid_or_expired') {
-            clearInterval(zee5PollTimer);
-            if (zee5CountdownTimer) clearInterval(zee5CountdownTimer);
-            const timerEl = document.getElementById('zee5TimerText');
-            if (timerEl) timerEl.innerText = 'Code expired. Click Refresh to get a new code.';
-          }
-        } catch (_err) {}
-      }, 3000);
-    }
-
-    window.toggleDirectAdminLogin = function(showLogin) {
-      const pairCard = document.getElementById('stepZee5PairCard');
-      const authCard = document.getElementById('step2AuthCard');
-      const stepText = document.getElementById('stepIndicatorText');
-      if (showLogin) {
-        if (pairCard) pairCard.style.display = 'none';
-        if (authCard) authCard.style.display = 'block';
-        if (stepText) stepText.innerText = 'Admin Sign In';
-        const em = document.getElementById('authEmailInput');
-        if (em) em.focus();
-      } else {
-        if (pairCard) pairCard.style.display = 'block';
-        if (authCard) authCard.style.display = 'none';
-        if (stepText) stepText.innerText = 'Device Activation: Pair with Admin Console';
-      }
-    };
-
-    // =========================================================================
+                            // =========================================================================
     // MODAL DIALOGS FOR DEVICE PAIRING & MANAGEMENT
     // =========================================================================
             window.submitApproveDeviceCode = async function() {
@@ -3145,10 +2917,8 @@
       }
       window._pendingAuthUser = user;
       const authCard = document.getElementById('step2AuthCard');
-      const zee5Card = document.getElementById('stepZee5PairCard');
       const pairCard = document.getElementById('step3PairCard');
       if (authCard) authCard.style.display = 'none';
-      if (zee5Card) zee5Card.style.display = 'none';
       if (pairCard) pairCard.style.display = 'block';
       // One card, two situations. A shop whose PC is simply switched off should be
       // told that, not invited to set up something it already has.
