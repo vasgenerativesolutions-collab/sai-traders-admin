@@ -8264,13 +8264,30 @@ setInterval(async () => {
 }, RECONCILER_INTERVAL_MS);
 
 // Start Server
-app.listen(PORT, () => {
+//
+// Loopback only, deliberately.
+//
+// app.listen(PORT) binds every interface, so this server was reachable from the shop
+// network — a request to the LAN address returned 200 on an unauthenticated route.
+// "Nobody touches the shop PC" is true and beside the point: the exposure was anyone
+// on the wifi, including a guest phone, and among those routes is the one that places
+// stock holds and can block real sales.
+//
+// Binding to 127.0.0.1 makes the physical-trust argument actually hold, and costs
+// nothing: this dashboard is used on this machine, and from anywhere else the hosted
+// one reads Supabase directly under row level security. ADMIN_BIND=0.0.0.0 opens it
+// on purpose — and then the unauthenticated routes become a real problem, so only do
+// that behind something that authenticates.
+const BIND_HOST = (process.env.ADMIN_BIND || env.ADMIN_BIND || '127.0.0.1').trim();
+
+app.listen(PORT, BIND_HOST, () => {
   console.log(`===============================================================================`);
   console.log(`⚡ SAI TRADERS ENTERPRISE INVENTORY & SCREENSHOT IDENTIFIER ACTIVE`);
   console.log(`🌐 System Web Portal : http://localhost:${PORT}`);
   console.log(`🧪 API Simulator     : http://localhost:${PORT}/api-test`);
   console.log(`🖥️ TallyPrime Server : http://${TALLY_HOST}:${TALLY_PORT}`);
   console.log(`🔐 Deployment Mode   : ${DEPLOYMENT_MODE}${ALLOW_LOOPBACK_ADMIN ? ' (loopback admin allowed)' : ' (all requests must authenticate)'}`);
+  console.log(`🔒 Listening on      : ${BIND_HOST}:${PORT}${BIND_HOST === '127.0.0.1' ? ' (this machine only — not reachable from the network)' : ' (REACHABLE FROM THE NETWORK)'}`);
   console.log(`🌅 Morning Sync     : Automated daily at 08:00 AM`);
   console.log(`🔍 Screenshot Match  : gemini-embedding-2 + ${GEMINI_VISION_MODEL}`);
   console.log(`===============================================================================`);
