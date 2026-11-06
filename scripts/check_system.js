@@ -136,8 +136,20 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
       else if (seenSec < 3600) note(`"${d.device_name}" last spoke ${ago(d.last_seen_at)}`, 'it may have been closed; a healthy agent speaks every 30 seconds');
       else bad(`"${d.device_name}" last spoke ${ago(d.last_seen_at)}`, 'the agent is not running on that PC — start it');
 
-      if (d.tally_reachable) good('  TallyPrime is answering on that PC');
-      else bad('  TallyPrime is not answering on that PC', 'open Tally, load the company, F1 > Settings > Connectivity (acts as: Both, port 9000)');
+      // Everything below comes from the same heartbeat row. If the PC has gone quiet,
+      // these describe the past, so say so rather than reporting them as the present.
+      const live = seenSec < 180;
+
+      if (!live) {
+        console.log(`${C.dim}       nothing below is current — it is what that PC last reported${C.off}`);
+      }
+
+      if (d.tally_reachable) {
+        if (live) good('  TallyPrime is answering on that PC');
+        else console.log(`${C.dim}       Tally was answering when it last reported${C.off}`);
+      } else {
+        bad('  TallyPrime is not answering on that PC', 'open Tally, load the company, F1 > Settings > Connectivity (acts as: Both, port 9000)');
+      }
 
       if (!d.company_loaded) note('  no Tally company is open', 'load the company in Tally');
 
@@ -148,8 +160,10 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
       } else if (published && running !== published) {
         bad(`  running an old agent (${running}, published is ${published})`,
           'restart the agent on that PC — it updates itself on start');
-      } else if (published) {
+      } else if (published && live) {
         good(`  running the current agent (${running})`);
+      } else if (published) {
+        console.log(`${C.dim}       was running the current agent (${running})${C.off}`);
       }
     }
 

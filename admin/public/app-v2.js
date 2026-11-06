@@ -40,8 +40,228 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
   let apiBase = isDirectBackend ? '' : (localStorage.getItem('sai_api_base_url') || '');
 
   const originalFetch = window.fetch;
+
+  // ---------------------------------------------------------------------------
+  // Serverless mode.
+  //
+  // Hosted on a static host there is no /api to call: every request returned the
+  // 404 page and the dashboard showed nothing. The shop PC deliberately runs no
+  // server and accepts no inbound connection, so there is nothing to point at either.
+  //
+  // So the data calls are answered here, from Supabase directly. Reads use the signed-in
+  // member's own session, which row level security scopes to their shop — the database
+  // enforces it rather than this code promising to. Writes go to the edge function,
+  // which checks membership and queues work for the agent; a browser is never given
+  // permission to write a job.
+  //
+  // Only the handful of endpoints the main screens need are covered. Anything else
+  // still reaches a real server when one is configured, and fails honestly when not.
+  // ---------------------------------------------------------------------------
+  const SERVERLESS = {
+    async token() {
+      try {
+        if (window.supabaseClient) {
+          const { data } = await window.supabaseClient.auth.getSession();
+          if (data?.session?.access_token) return data.session.access_token;
+        }
+      } catch (_) {}
+      return window.supabaseToken || localStorage.getItem('sb_access_token') || '';
+    },
+
+    async rest(path) {
+      const token = await this.token();
+      const res = await originalFetch(`${window.SAI_SUPABASE_URL}/rest/v1/${path}`, {
+        headers: {
+          apikey: window.SAI_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token || window.SAI_SUPABASE_ANON_KEY}`,
+        },
+      });
+      if (!res.ok) throw new Error(`Supabase returned ${res.status} for ${path.split('?')[0]}`);
+      return res.json();
+    },
+
+    async fn(action, body) {
+      const token = await this.token();
+      const res = await originalFetch(`${window.SAI_SUPABASE_URL}/functions/v1/agent-sync/${action}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: window.SAI_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body || {}),
+      });
+      return { ok: res.ok, status: res.status, body: await res.json().catch(() => ({})) };
+    },
+
+    reply(payload, status) {
+      return new Response(JSON.stringify(payload), {
+        status: status || 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+
+    // Whether the shop PC is alive, and which Tally company it has open.
+    async status() {
+      const [devices, shops] = await Promise.all([
+        this.rest('agent_devices?select=device_name,last_seen_at,tally_reachable,company_loaded,status,revoked_at,version&status=eq.active&revoked_at=is.null&order=last_seen_at.desc&limit=1'),
+        this.rest('shops?select=name,settings&limit=1'),
+      ]);
+
+      const device = devices[0] || null;
+      const shop = shops[0] || null;
+      const settings = (shop && shop.settings) || {};
+      const ageSeconds = device && device.last_seen_at
+        ? Math.max(0, Math.round((Date.now() - new Date(device.last_seen_at).getTime()) / 1000))
+        : null;
+      // A healthy agent speaks every 30 seconds, so 90 is three missed beats.
+      const fresh = ageSeconds !== null && ageSeconds < 90;
+
+      let notice = null;
+      if (!device) notice = 'No store PC is connected yet. Run the installer on the shop PC and pair the code it shows.';
+      else if (!fresh) notice = `The store PC last reported ${ageSeconds === null ? 'never' : Math.round(ageSeconds / 60) + ' min ago'}. Start the agent on that PC.`;
+      else if (!device.tally_reachable) notice = 'The store PC is connected, but TallyPrime is not answering on port 9000.';
+      else if (!device.company_loaded) notice = 'The store PC is connected and Tally is running, but no company is open.';
+
+      const products = await this.rest('saree_catalog?select=id&status=not.in.(archived,deleted)');
+
+      return {
+        success: true,
+        tally: {
+          connected: Boolean(fresh && device && device.tally_reachable && device.company_loaded),
+          remoteStore: true,
+          storePcOnline: Boolean(fresh),
+          hostname: device ? device.device_name : null,
+          company: settings.tally_company || null,
+          guid: settings.tally_guid || null,
+          shopName: shop ? shop.name : null,
+          godown: settings.online_godown || '',
+          targetGodown: settings.online_godown || null,
+          ageSeconds,
+          notice,
+          identityVerified: Boolean(settings.tally_guid),
+          firstTimeRegistration: false,
+        },
+        counts: { products: products.length },
+        serverless: true,
+      };
+    },
+
+    // The product grid, with the godown breakdown the cards show.
+    async products() {
+      const [rows, settings] = await Promise.all([
+        this.rest('saree_catalog?select=*&status=not.in.(archived,deleted)&order=created_at.desc'),
+        this.rest('app_settings?select=key,value&key=in.(tally_godown_stock_matrix,tally_unallocated_stock)'),
+      ]);
+
+      const read = (key) => {
+        const row = settings.find((r) => r.key === key);
+        if (!row || !row.value) return {};
+        try { return typeof row.value === 'string' ? JSON.parse(row.value) : row.value; } catch (_) { return {}; }
+      };
+      const matrix = read('tally_godown_stock_matrix');
+      const unallocated = read('tally_unallocated_stock');
+
+      const shops = await this.rest('shops?select=settings&limit=1');
+      const godown = (shops[0] && shops[0].settings && shops[0].settings.online_godown) || '';
+
+      const products = rows.map((p) => {
+        const key = String(p.tally_part_number || p.sku || '').toLowerCase();
+        const godowns = matrix[key] || {};
+        const match = Object.keys(godowns).find((g) => g.toLowerCase() === godown.toLowerCase());
+        return {
+          ...p,
+          canonical_code: p.sku,
+          godown_stocks: godowns,
+          closing_total: Object.values(godowns).reduce((sum, q) => sum + (Number(q) || 0), 0),
+          unallocated_qty: Number(unallocated[key]) || 0,
+          in_requested_godown: match !== undefined ? Number(godowns[match]) || 0 : 0,
+        };
+      });
+
+      return { success: true, products, activeGodown: godown, serverless: true };
+    },
+
+    // Set stock. Queued through the edge function, then watched until it settles, so the
+    // answer reflects what Tally did rather than what was asked for.
+    async setStock(payload) {
+      const queued = await this.fn('set-stock', {
+        name: payload.code,
+        targetQuantity: payload.targetQuantity,
+      });
+      if (!queued.ok) {
+        return { success: false, error: queued.body.error || `The update was refused (${queued.status})` };
+      }
+
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const check = await this.fn('job-status', { jobId: queued.body.jobId });
+        if (!check.ok) break;
+        if (check.body.state === 'completed') {
+          return {
+            success: true,
+            newQuantity: queued.body.targetQuantity,
+            message: `${queued.body.item} set to ${queued.body.targetQuantity} in ${queued.body.godown}.`,
+          };
+        }
+        if (check.body.state === 'failed') {
+          return { success: false, error: check.body.error || 'Tally rejected the update' };
+        }
+      }
+
+      return {
+        success: true,
+        queued: true,
+        newQuantity: queued.body.targetQuantity,
+        message: `Queued: ${queued.body.item} will be set to ${queued.body.targetQuantity} when the store PC next reports in.`,
+      };
+    },
+
+    // Pair a store PC by the code it displays.
+    async pair(code) {
+      const res = await this.fn('approve', { code });
+      if (!res.ok) return { success: false, error: res.body.error || `Pairing failed (${res.status})` };
+      return { success: true, deviceName: res.body.deviceName, deviceId: res.body.deviceId };
+    },
+  };
+
+  // Answer the calls the main screens make; let everything else through.
+  async function serveWithoutServer(url, options) {
+    const path = String(url).split('?')[0];
+    const method = ((options && options.method) || 'GET').toUpperCase();
+
+    try {
+      if (path === '/api/status') return SERVERLESS.reply(await SERVERLESS.status());
+      if (path === '/api/products' || path === '/api/live-stock') return SERVERLESS.reply(await SERVERLESS.products());
+
+      if (path === '/api/adjust-tally-stock' && method === 'POST') {
+        const body = JSON.parse((options && options.body) || '{}');
+        return SERVERLESS.reply(await SERVERLESS.setStock(body));
+      }
+
+      if (path === '/api/auth/device-pair' && method === 'POST') {
+        const body = JSON.parse((options && options.body) || '{}');
+        return SERVERLESS.reply(await SERVERLESS.pair(body.code || body.pairingCode));
+      }
+    } catch (err) {
+      return SERVERLESS.reply({ success: false, error: err.message }, 200);
+    }
+
+    // Not covered. Say which screen needs a store server rather than returning the
+    // host's 404 page and letting the dashboard report mangled JSON.
+    return SERVERLESS.reply({
+      success: false,
+      error: `This screen needs the store server (${path}). It is not available when the dashboard is hosted on its own.`,
+    }, 200);
+  }
+
   window.fetch = function(url, options) {
     if (typeof url === 'string' && url.startsWith('/api/')) {
+      // Hosted with no store server reachable: answer from Supabase instead of asking
+      // a static host for /api and getting its 404 page back as "invalid JSON".
+      if (!isDirectBackend && !apiBase) return serveWithoutServer(url, options);
+
       url = (apiBase ? apiBase.replace(/\/$/, '') : '') + url;
       // When the dashboard is served from a different origin than the API, the
       // admin_session cookie is third-party and browsers withhold it. Carry the
@@ -68,19 +288,12 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
     });
   };
 
-  // Served from somewhere that is not the API itself, with no backend configured yet.
-  // Prompt rather than letting every request fail with no explanation.
+  // No prompt for a server address any more. The dashboard reads Supabase directly
+  // when hosted on its own, so there is nothing to configure — and asking a shopkeeper
+  // for an API URL taught them the product was broken. Setting sai_api_base_url by hand
+  // still works for anyone who wants to point at a store server deliberately.
   if (!isDirectBackend && !apiBase) {
-    setTimeout(function () {
-      var guess = prompt(
-        'This dashboard is hosted separately from your store server.\n\n' +
-        'Enter the backend API URL (the Store PC), for example:\n' +
-        '  http://192.168.1.17:3000\n' +
-        '  https://your-tunnel.trycloudflare.com',
-        ''
-      );
-      if (guess && guess.trim()) window.setSaiApiBaseUrl(guess);
-    }, 400);
+    console.log('[Sai] No store server configured — reading Supabase directly.');
   }
 
   window.setSaiApiBaseUrl = function(newUrl) {

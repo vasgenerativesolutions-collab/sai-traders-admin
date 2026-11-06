@@ -155,24 +155,138 @@ async function enrollStatus(body: Record<string, unknown>) {
 // JWT. This is the only action that can turn an enrollment into a usable credential,
 // which is what keeps the unauthenticated enroll call safe.
 // ---------------------------------------------------------------------------
-async function approve(req: Request, body: Record<string, unknown>) {
+/**
+ * The signed-in member behind a dashboard request, and the shops they may act on.
+ *
+ * approve() verified the JWT but never checked membership, so any signed-in Supabase
+ * user could pair a device to any shop. Verifying identity is not the same as
+ * authorising an action.
+ */
+async function authenticateMember(req: Request) {
   const auth = req.headers.get('authorization') || '';
-  const userJwt = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
-  if (!userJwt) return json({ error: 'sign_in_required' }, 401);
+  const jwt = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+  if (!jwt) return null;
 
-  const { data: userData, error: userErr } = await db.auth.getUser(userJwt);
-  if (userErr || !userData?.user) return json({ error: 'sign_in_required' }, 401);
+  const { data, error } = await db.auth.getUser(jwt);
+  if (error || !data?.user) return null;
+
+  const { data: rows } = await db
+    .from('shop_members')
+    .select('shop_id, role')
+    .eq('user_id', data.user.id);
+
+  const shopIds = (rows || []).map((r) => r.shop_id as string).filter(Boolean);
+  if (!shopIds.length) return null;   // signed in, but belongs to no shop
+
+  return { user: data.user, shopIds, email: data.user.email as string | undefined };
+}
+
+/**
+ * Set an item's stock, asked for by a signed-in member.
+ *
+ * The dashboard has no other way to reach Tally when it is hosted with no server
+ * behind it. The work is queued for the agent rather than attempted here: only the
+ * agent can see Tally, and it reads the baseline immediately before writing so no
+ * stale figure can land in the result.
+ *
+ * Writing to agent_jobs is deliberately NOT given to the browser through RLS. A job is
+ * an instruction to change someone's books, so it is created here, where membership and
+ * the shape of the payload are both checked.
+ */
+async function setStock(req: Request, body: Record<string, unknown>) {
+  const member = await authenticateMember(req);
+  if (!member) return json({ error: 'sign_in_required' }, 401);
+
+  const name = String(body.name || body.code || '').trim();
+  if (!name) return json({ error: 'name_required' }, 400);
+
+  const target = Number(body.targetQuantity);
+  if (!Number.isFinite(target) || target < 0 || target > 1_000_000) {
+    return json({ error: 'target_out_of_range' }, 400);
+  }
+
+  const shopId = String(body.shopId || member.shopIds[0]);
+  if (!member.shopIds.includes(shopId)) return json({ error: 'not_your_shop' }, 403);
+
+  // The godown comes from the shop's registration, not the request. A caller naming its
+  // own godown could move stock into one the shop does not sell from.
+  const { data: shop } = await db.from('shops').select('settings').eq('id', shopId).maybeSingle();
+  const settings = (shop?.settings as Record<string, unknown> | null) || {};
+  const godown = String(settings.online_godown || '').trim();
+  if (!godown) return json({ error: 'no_online_godown' }, 409);
+
+  // The price is read from the catalogue, never taken from the caller: a rate in the
+  // request body would let a browser set the value of a voucher.
+  const { data: product } = await db
+    .from('saree_catalog')
+    .select('id, sku, tally_part_number, name, price, tally_rate')
+    .eq('shop_id', shopId)
+    .or(`sku.eq.${name},tally_part_number.eq.${name}`)
+    .maybeSingle();
+
+  if (!product) return json({ error: 'unknown_product' }, 404);
+
+  const tallyName = String(product.tally_part_number || product.sku || product.name);
+  const rate = Number(product.price) || Number(product.tally_rate) || 0;
+
+  const { data: job, error } = await db.from('agent_jobs').insert({
+    shop_id: shopId,
+    type: 'adjust_stock',
+    state: 'pending',
+    payload: {
+      name: tallyName,
+      targetQuantity: Math.round(target),
+      godown,
+      unit: 'Pcs',
+      rate,
+      requestedBy: member.email || null,
+    },
+  }).select('id').single();
+
+  if (error) return json({ error: 'queue_failed', detail: error.message }, 500);
+
+  console.log(`[agent-sync] ${member.email} queued ${tallyName} -> ${target} in ${godown}`);
+  return json({ ok: true, jobId: job.id, item: tallyName, godown, targetQuantity: Math.round(target) });
+}
+
+/** How a queued job is getting on, for the member who asked for it. */
+async function jobStatus(req: Request, body: Record<string, unknown>) {
+  const member = await authenticateMember(req);
+  if (!member) return json({ error: 'sign_in_required' }, 401);
+
+  const id = String(body.jobId || '').trim();
+  if (!id) return json({ error: 'jobId_required' }, 400);
+
+  const { data: job } = await db
+    .from('agent_jobs')
+    .select('id, shop_id, type, state, error, result')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (!job) return json({ error: 'job_not_found' }, 404);
+  if (!member.shopIds.includes(job.shop_id)) return json({ error: 'not_your_shop' }, 403);
+
+  return json({ ok: true, state: job.state, error: job.error, result: job.result });
+}
+
+async function approve(req: Request, body: Record<string, unknown>) {
+  // Membership, not just a valid session. Any signed-in Supabase user could pair a
+  // device to any shop before this: the JWT was verified and then nothing was asked
+  // about what that person is allowed to do.
+  const member = await authenticateMember(req);
+  if (!member) return json({ error: 'sign_in_required' }, 401);
 
   const code = String(body.code || '').toUpperCase().trim();
   if (!code) return json({ error: 'code_required' }, 400);
 
   const { data: device } = await db
     .from('agent_devices')
-    .select('id, status, enrollment_expires_at, revoked_at, device_name')
+    .select('id, shop_id, status, enrollment_expires_at, revoked_at, device_name')
     .eq('enrollment_code', code)
     .maybeSingle();
 
   if (!device) return json({ error: 'unknown_code' }, 404);
+  if (!member.shopIds.includes(device.shop_id)) return json({ error: 'not_your_shop' }, 403);
   if (device.revoked_at) return json({ error: 'device_revoked' }, 409);
   if (device.status === 'active') return json({ ok: true, alreadyApproved: true, deviceId: device.id });
   if (device.enrollment_expires_at && new Date(device.enrollment_expires_at) < new Date()) {
@@ -205,7 +319,7 @@ async function approve(req: Request, body: Record<string, unknown>) {
     console.log(`[agent-sync] retired ${retired.length} previous agent(s) for shop ${device.shop_id}`);
   }
 
-  console.log(`[agent-sync] ${userData.user.email} approved device ${device.id}`);
+  console.log(`[agent-sync] ${member.email} approved device ${device.id}`);
   return json({ ok: true, deviceId: device.id, deviceName: patch.device_name || device.device_name });
 }
 
@@ -673,6 +787,8 @@ Deno.serve(async (req) => {
       case 'sync': return await syncStock(body);
       case 'report': return await report(body);
       case 'heartbeat': return await heartbeat(body);
+      case 'set-stock': return await setStock(req, body);
+      case 'job-status': return await jobStatus(req, body);
       default: return json({ error: 'unknown_action', action }, 404);
     }
   } catch (err) {
