@@ -4941,6 +4941,158 @@ app.post('/api/sync-product-stock/:code', requireAdminAuth, async (req, res) => 
 
 // Delete Product: Soft Delete by default (removes from online stock & moves to Deleted view); Hard purge if ?purge=true
 /**
+ * Edit what a customer sees.
+ *
+ * A saree arrives from Tally named by its stock code — SAI-SILK-02 — because that is
+ * all Tally has. No customer should be shown that, so the shop needs to give it a real
+ * name, a description and a price.
+ *
+ * Only customer-facing fields can be changed here. Deliberately NOT editable:
+ *
+ *   sku, tally_part_number  the link to Tally. Change it and the next reading stops
+ *                           matching, the saree drops to zero online, and a second
+ *                           draft appears for the same item.
+ *   stock_quantity          Tally owns the quantity. A figure typed here would be
+ *                           overwritten within two minutes, which is worse than
+ *                           refusing it.
+ *   status, is_active       whether a saree is on sale has its own route, so that
+ *                           taking one off sale is a deliberate act and not a side
+ *                           effect of an edit.
+ */
+app.patch('/api/products/:id', requireAdminAuth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const shopId = (Array.isArray(req.shopIds) && req.shopIds[0]) || SHOP_ID;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    const filter = isUuid
+      ? `id=eq.${id}`
+      : `or=(sku.eq.${encodeURIComponent(id)},tally_part_number.eq.${encodeURIComponent(id)})`;
+
+    const found = await fetch(
+      `${SUPABASE_URL}/rest/v1/saree_catalog?shop_id=eq.${shopId}&${filter}&select=id,sku,name&limit=1`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+    ).then((r) => (r.ok ? r.json() : []));
+
+    const saree = found[0];
+    if (!saree) return res.status(404).json({ success: false, error: `${id} is not in this shop's catalogue` });
+
+    const body = req.body || {};
+    const patch = {};
+
+    if (typeof body.name === 'string') {
+      const name = body.name.trim();
+      if (!name) return res.status(400).json({ success: false, error: 'A display name cannot be empty' });
+      if (name.length > 140) return res.status(400).json({ success: false, error: 'That name is too long (140 characters maximum)' });
+      patch.name = name;
+    }
+
+    if (typeof body.description === 'string') patch.description = body.description.trim().slice(0, 2000);
+
+    for (const field of ['price', 'mrp']) {
+      if (body[field] === undefined || body[field] === null || body[field] === '') continue;
+      const value = Number(body[field]);
+      if (!Number.isFinite(value) || value < 0) {
+        return res.status(400).json({ success: false, error: `${field} must be zero or a positive number` });
+      }
+      patch[field] = value;
+    }
+
+    for (const field of ['fabric', 'color_primary', 'color_secondary', 'weave_style', 'occasion']) {
+      if (body[field] === undefined) continue;
+      if (field === 'occasion') {
+        patch.occasion = Array.isArray(body.occasion) ? body.occasion.slice(0, 10).map(String) : [];
+      } else if (typeof body[field] === 'string') {
+        patch[field] = body[field].trim().slice(0, 80);
+      }
+    }
+
+    if (!Object.keys(patch).length) {
+      return res.status(400).json({ success: false, error: 'Nothing to change' });
+    }
+
+    // Saving and listing are separate steps, because listing has conditions this
+    // route does not get to decide. The database enforces five of them in
+    // trg_enforce_listing_rules: a name, a selling price, at least one photo, a
+    // verified video item, and confirmation in Tally.
+    //
+    // Setting status to 'listed' and hoping was wrong — the trigger refused the whole
+    // update, so the name and price were lost too. The edits are saved first, then the
+    // same five conditions are evaluated here so the answer is a checklist of what is
+    // still needed rather than one exception about whichever check happened to fail
+    // first.
+    patch.updated_at = new Date().toISOString();
+
+    const updated = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${saree.id}`, {
+      method: 'PATCH',
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify(patch)
+    });
+
+    if (!updated.ok) {
+      return res.status(502).json({ success: false, error: (await updated.text()).slice(0, 300) });
+    }
+
+    const row = (await updated.json())[0];
+
+    // What listing still needs. Mirrors the trigger deliberately: a checklist that
+    // disagrees with the rule is worse than no checklist.
+    const tallyCode = row.tally_part_number || row.sku;
+    let hasVerifiedVideo = false;
+    try {
+      const vRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/video_item?select=id,video_record!inner(is_active)` +
+        `&product_code=eq.${encodeURIComponent(tallyCode)}&verified=eq.true&limit=1`,
+        { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+      );
+      if (vRes.ok) {
+        const vids = await vRes.json();
+        hasVerifiedVideo = vids.some((v) => v.video_record && v.video_record.is_active);
+      }
+    } catch (_vErr) { /* treated as not ready, which is the safe direction */ }
+
+    const needs = [];
+    if (!row.name || !row.name.trim()) needs.push('a name');
+    if (!(Number(row.price) > 0)) needs.push('a selling price');
+    if (!Array.isArray(row.image_urls) || row.image_urls.length < 1) needs.push('at least one photo');
+    if (!hasVerifiedVideo) needs.push('a verified video');
+    if (!row.item_created_in_tally || !row.stock_added_in_tally) needs.push('stock confirmed in Tally');
+
+    let listed = false;
+    if (!needs.length && row.status !== 'listed') {
+      const promote = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${saree.id}`, {
+        method: 'PATCH',
+        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'listed', is_active: true, updated_at: new Date().toISOString() })
+      });
+      listed = promote.ok;
+      if (!listed) {
+        // The trigger knows something this checklist does not. Say what it said.
+        const why = (await promote.text()).slice(0, 200);
+        console.warn(`[products] ${saree.sku} passed the checklist but the database refused to list it: ${why}`);
+        needs.push(`the database refused: ${why}`);
+      }
+    } else {
+      listed = row.status === 'listed';
+    }
+
+    console.log(`[products] ${saree.sku} saved as "${row.name}"${listed ? ', listed' : `, not listed (needs ${needs.join(', ')})`}`);
+
+    return res.json({
+      success: true,
+      product: row,
+      listed,
+      needs,
+      message: listed
+        ? `Saved. "${row.name}" is on sale to online customers.`
+        : `Saved — customers will see "${row.name}". Still needed before it goes on sale: ${needs.join(', ')}.`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * Take a saree off online sale.
  *
  * This used to reach into Tally and set the item's opening balance to zero. That is the
@@ -7710,39 +7862,19 @@ app.post('/api/remove-photo', requireAdminAuth, async (req, res) => {
 
 
 // -----------------------------------------------------------------------------
-// Automatic Live Token Synchronizer (.env -> Supabase app_settings)
+// The WhatsApp credentials are NOT copied into the database.
+//
+// This used to push WHATSAPP_ACCESS_TOKEN from .env into app_settings on every
+// startup. app_settings was readable with the public anon key, so that is how a live
+// Meta token came to be served to anyone who asked — and it put the token straight
+// back the moment the server restarted after the row was deleted.
+//
+// The token lives in the edge function secrets now, which is where whatsapp.ts reads
+// it. Rotating it is `supabase secrets set`, effective immediately, no deploy. There
+// is nothing for this server to synchronise.
 // -----------------------------------------------------------------------------
-let lastSyncedToken = null;
-
 async function syncEnvTokensToDatabase() {
-  try {
-    const currentEnv = loadEnv();
-    const token = currentEnv.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneId = currentEnv.WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_NUMBER_ID;
-    if (!token) return;
-
-    if (lastSyncedToken !== token) {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_settings`, {
-        method: 'POST',
-        headers: {
-          apikey: SERVICE_KEY,
-          Authorization: `Bearer ${SERVICE_KEY}`,
-          'Content-Type': 'application/json',
-          Prefer: 'resolution=merge-duplicates'
-        },
-        body: JSON.stringify([
-          { key: 'WHATSAPP_ACCESS_TOKEN', value: token, description: 'Meta WhatsApp Cloud API Access Token' },
-          { key: 'WHATSAPP_PHONE_NUMBER_ID', value: phoneId || '', description: 'Meta Phone Number ID' }
-        ])
-      });
-      if (res.ok) {
-        lastSyncedToken = token;
-        console.log(`[TokenSync] ✓ Live WHATSAPP_ACCESS_TOKEN synced from .env to Supabase! (${token.slice(0, 15)}...)`);
-      }
-    }
-  } catch (err) {
-    console.warn('[TokenSync] Warning:', err.message);
-  }
+  // Deliberately does nothing. Kept so the existing callers need no change.
 }
 
 // Hot-reload .env whenever updated

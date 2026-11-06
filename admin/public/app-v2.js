@@ -985,6 +985,10 @@ function renderInventoryGrid() {
                 <span>${isItemInTally ? 'Sync Tally Stock' : 'Push to Tally'}</span>
               </button>
               <div class="action-secondary-row">
+                <button class="btn-subtle" onclick="openEditProductModal('${code}')" title="Edit the name, price and details customers see">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>
+                  ${(p.name || '').trim().toLowerCase() === String(p.tally_part_number || p.sku || '').trim().toLowerCase() || !(Number(p.price) > 0) ? 'Name it' : 'Edit'}
+                </button>
                 <button class="btn-subtle" onclick="openAdjustStockModal('${code}', '${encodeURIComponent(isGroup ? activeVar.name : (p.name || ''))}', ${activeVarStock || 0})" title="Adjust stock directly in Tally ERP">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                   <span>Stock</span>
@@ -2820,6 +2824,610 @@ function setupAdjustStockModal() {
     });
   }
 }
+
+// -----------------------------------------------------------------------------
+// Godown selection and badges.
+//
+// Restored after an over-wide cut: the file's section banners do not match its
+// contents, so removing a banner-to-banner span took these with the Add Saree form.
+//
+// These were removed by accident with the Add Saree block: they sat inside the same
+// section banner. loadGodownStatus() is the first thing startAppAfterAuth awaits, so
+// without it the whole load chain threw and the inventory never appeared.
+// -----------------------------------------------------------------------------
+
+function renderGodownOptions(selectEl, godowns, activeName, hierarchy) {
+  if (!selectEl) return;
+  const currentVal = (activeName || selectEl.value || 'Main Location').trim();
+  selectEl.innerHTML = '';
+
+  const activeHierarchy = Array.isArray(hierarchy) && hierarchy.length > 0 
+    ? hierarchy 
+    : (window.currentGodownHierarchy || []);
+  window.currentGodownHierarchy = activeHierarchy;
+
+  if (activeHierarchy.length > 0) {
+    activeHierarchy.forEach(node => {
+      const opt = document.createElement('option');
+      opt.value = node.name;
+      let label = '';
+      if (node.level === 0) {
+        if (node.descendants && node.descendants.length > 0) {
+          label = `📦 ${escapeHtml(node.name)} (Root Godown • ${node.descendants.length} sub-godowns)`;
+        } else if (node.name.toLowerCase() === 'main location') {
+          label = `📁 Main Location (Tally Default)`;
+        } else {
+          label = `📁 ${escapeHtml(node.name)} (Root Godown)`;
+        }
+      } else {
+        const indent = '　'.repeat(Math.min(node.level, 3));
+        label = `${indent}↳ ${escapeHtml(node.name)} (Sub-godown of ${node.parent || 'Root'})`;
+      }
+      opt.textContent = label;
+      if (node.name.toLowerCase() === currentVal.toLowerCase()) {
+        opt.selected = true;
+      }
+      selectEl.appendChild(opt);
+    });
+  } else {
+    const map = new Map();
+    map.set('main location', 'Main Location');
+    (godowns || []).forEach(g => {
+      if (g && typeof g === 'string') {
+        const clean = g.trim();
+        if (clean) map.set(clean.toLowerCase(), clean);
+      }
+    });
+    if (currentVal) map.set(currentVal.toLowerCase(), currentVal);
+    map.forEach((g) => {
+      const opt = document.createElement('option');
+      opt.value = g;
+      opt.textContent = g.toLowerCase() === 'main location' ? 'Main Location (Tally Default)' : g;
+      if (g.toLowerCase() === currentVal.toLowerCase()) opt.selected = true;
+      selectEl.appendChild(opt);
+    });
+  }
+
+  const newOpt = document.createElement('option');
+  newOpt.value = '__NEW__';
+  newOpt.textContent = '+ Create New Godown in Tally...';
+  selectEl.appendChild(newOpt);
+
+  updateGodownHierarchyPreview(selectEl.value, activeHierarchy);
+}
+
+function updateGodownHierarchyPreview(selectedName, hierarchy) {
+  const wrap = document.getElementById('godownHierarchyInfoWrap');
+  const treeEl = document.getElementById('godownHierarchyTreeText');
+  const badgeEl = document.getElementById('godownSubCountBadge');
+  if (!wrap || !treeEl || !badgeEl) return;
+
+  if (!selectedName || selectedName === '__NEW__') {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  const clean = selectedName.trim();
+  const activeHierarchy = Array.isArray(hierarchy) && hierarchy.length > 0 
+    ? hierarchy 
+    : (window.currentGodownHierarchy || []);
+  const node = activeHierarchy.find(h => h.name.toLowerCase() === clean.toLowerCase());
+
+  if (node && node.descendants && node.descendants.length > 0) {
+    badgeEl.textContent = `${node.descendants.length} Sub-Godown${node.descendants.length > 1 ? 's' : ''} Included`;
+    badgeEl.style.background = 'rgba(16, 185, 129, 0.15)';
+    badgeEl.style.color = '#34d399';
+
+    let treeText = `📦 ${escapeHtml(node.name)} (Root Designated Godown)\n`;
+    node.descendants.forEach((d, idx) => {
+      const isLast = idx === node.descendants.length - 1;
+      treeText += `${isLast ? ' └──' : ' ├──'} ↳ ${d} (Sub-godown in scope)\n`;
+    });
+    treeText += `🛡️ Strict Isolation Active: Stock across "${escapeHtml(node.name)}" + [${node.descendants.join(', ')}] will be automatically aggregated. All external godowns (Main Location, etc.) are strictly excluded.`;
+    treeEl.textContent = treeText;
+  } else if (node && node.parent) {
+    badgeEl.textContent = `Child of ${node.parent}`;
+    badgeEl.style.background = 'rgba(245, 158, 11, 0.15)';
+    badgeEl.style.color = '#fbbf24';
+
+    let treeText = `📁 Parent Root: ${node.parent}\n`;
+    treeText += ` └── ↳ ${escapeHtml(node.name)} (Direct Single Sub-Godown)\n`;
+    treeText += `🛡️ Targeted Selection: Only stock explicitly placed in "${escapeHtml(node.name)}" will be synced.`;
+    treeEl.textContent = treeText;
+  } else {
+    badgeEl.textContent = 'Direct Godown (0 Sub-godowns)';
+    badgeEl.style.background = 'rgba(59, 130, 246, 0.15)';
+    badgeEl.style.color = '#93c5fd';
+
+    let treeText = `📁 ${clean === 'Main Location' ? 'Main Location (Tally Default - Showroom)' : clean}\n`;
+    treeText += `🛡️ Standalone Godown: Stock is isolated strictly to this single godown without child branches.`;
+    treeEl.textContent = treeText;
+  }
+}
+
+async function openGodownSetupModal(tallyInfo = null) {
+  const modal = document.getElementById('modalGodownSetup');
+  if (!modal) return;
+  modal.classList.add('active');
+
+  const compEl = document.getElementById('setupTallyCompany');
+  const guidEl = document.getElementById('setupTallyGuid');
+  const tagEl = document.getElementById('setupTallyStatusTag');
+  const select = document.getElementById('selectSaaSTargetGodown');
+  const customWrap = document.getElementById('customGodownWrap');
+  const devTitle = document.getElementById('setupDeviceTitle');
+  const devMode = document.getElementById('setupDeviceModeBadge');
+  const storePcName = document.getElementById('setupStorePcName');
+  const storePcStatus = document.getElementById('setupStorePcStatus');
+  const storePcDot = document.getElementById('setupStorePcDot');
+
+  if (customWrap) customWrap.style.display = 'none';
+
+  // Immediate resilient baseline (Zero 'Checking...' or '—' delay)
+  const defaultCompany = tallyInfo?.company || lastDetectedTally?.companyName || 'Detecting...';
+  const defaultGuid = tallyInfo?.guid || lastDetectedTally?.guid || '—';
+  if (compEl && (!compEl.textContent || compEl.textContent === '—')) compEl.textContent = defaultCompany;
+  if (guidEl && (!guidEl.textContent || guidEl.textContent === '—')) guidEl.textContent = defaultGuid;
+  if (tagEl) {
+    tagEl.textContent = 'Verified Store';
+    tagEl.style.background = 'rgba(16, 185, 129, 0.15)';
+    tagEl.style.color = '#10b981';
+  }
+  const currentDevLabel = window.deviceName || (window.isDeviceLocked ? 'Store Terminal' : 'Admin Terminal');
+  if (devTitle) devTitle.textContent = `💻 ${currentDevLabel}`;
+  if (devMode) {
+    devMode.textContent = window.isDeviceLocked ? 'Locked Storage' : 'Cloud Connected';
+    devMode.style.background = window.isDeviceLocked ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)';
+    devMode.style.color = window.isDeviceLocked ? '#10b981' : '#60a5fa';
+  }
+  if (storePcName) storePcName.textContent = window.deviceName || 'Verified Store Terminal';
+  if (storePcStatus) {
+    storePcStatus.textContent = window.isDeviceLocked ? `● Locked to ${window.lockedGodown || 'Godown'}` : '● TallyPrime Online (Port 9000)';
+    storePcStatus.style.color = '#10b981';
+  }
+  if (storePcDot) storePcDot.style.background = '#10b981';
+
+  // Pre-fill godown options immediately if select is blank or only has default
+  if (select && select.options.length <= 1) {
+    const knownGodowns = ['Online_saree', 'Sarees', 'Main Location', 'Jari', 'Online_Warehouse'];
+    const curGodown = activeGodownName || 'Online_saree';
+    renderGodownOptions(select, knownGodowns, curGodown, window.currentGodownHierarchy);
+  }
+
+  // Pre-fill if tallyInfo provided
+  if (tallyInfo) {
+    if (compEl) compEl.textContent = tallyInfo.company || defaultCompany;
+    if (guidEl) guidEl.textContent = tallyInfo.guid || defaultGuid;
+    if (tagEl) {
+      if (tallyInfo.firstTimeRegistration) {
+        tagEl.textContent = 'Pairing Required';
+        tagEl.style.background = 'rgba(245, 158, 11, 0.15)';
+        tagEl.style.color = '#f59e0b';
+      } else if (tallyInfo.identityMismatch) {
+        tagEl.textContent = 'Identity Mismatch';
+        tagEl.style.background = 'rgba(239, 68, 68, 0.15)';
+        tagEl.style.color = '#ef4444';
+      } else {
+        tagEl.textContent = 'Verified Store';
+        tagEl.style.background = 'rgba(16, 185, 129, 0.15)';
+        tagEl.style.color = '#10b981';
+      }
+    }
+  }
+
+  // Fetch live identity and available godowns from API in background
+  try {
+    const [idRes, godownRes] = await Promise.all([
+      fetch('/api/admin/tally-identity').catch(() => null),
+      fetch('/api/admin/godowns/list').catch(() => null)
+    ]);
+    const idData = idRes ? await idRes.json().catch(() => null) : null;
+    const gData = godownRes ? await godownRes.json().catch(() => null) : null;
+
+    if (idData) {
+      if (idData.currentlyConnected) {
+        lastDetectedTally = idData.currentlyConnected;
+        if (compEl) compEl.textContent = idData.currentlyConnected.companyName || defaultCompany;
+        if (guidEl) guidEl.textContent = idData.currentlyConnected.guid || defaultGuid;
+        if (tagEl) {
+          if (!idData.registered) {
+            tagEl.textContent = 'New Tally (Not Paired)';
+            tagEl.style.background = 'rgba(245, 158, 11, 0.15)';
+            tagEl.style.color = '#f59e0b';
+          } else if (idData.isVerified) {
+            tagEl.textContent = 'Verified Store';
+            tagEl.style.background = 'rgba(16, 185, 129, 0.15)';
+            tagEl.style.color = '#10b981';
+          } else {
+            tagEl.textContent = 'Identity Mismatch';
+            tagEl.style.background = 'rgba(239, 68, 68, 0.15)';
+            tagEl.style.color = '#ef4444';
+          }
+        }
+      }
+
+      if (idData.currentDevice) {
+        if (devTitle) {
+          devTitle.textContent = idData.currentDevice.isLaptop
+            ? `💻 Admin Laptop (${idData.currentDevice.hostname || 'MITHUN'})`
+            : `🖥️ Store PC (${idData.currentDevice.hostname || 'AISHWARYA'})`;
+        }
+        if (devMode) {
+          devMode.textContent = idData.localTallyConnected ? 'Local ERP (Port 9000)' : 'Cloud Connected';
+          devMode.style.background = idData.localTallyConnected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)';
+          devMode.style.color = idData.localTallyConnected ? '#10b981' : '#60a5fa';
+        }
+      }
+
+      const storeHost = idData.remoteHostname || 'AISHWARYA';
+      if (storePcName) storePcName.textContent = storeHost;
+      if (storePcStatus) {
+        const isOnline = Boolean(idData.remoteStoreConnected || idData.remoteGwOnline);
+        storePcStatus.textContent = isOnline ? '● TallyPrime Online (Port 9000)' : '○ Cloud Registered (Store Standby)';
+        storePcStatus.style.color = isOnline ? '#10b981' : '#94a3b8';
+        if (storePcDot) storePcDot.style.background = isOnline ? '#10b981' : '#94a3b8';
+      }
+    }
+
+    if (gData && gData.success && Array.isArray(gData.godowns) && select) {
+      const currentVal = gData.activeGodown || activeGodownName || 'Online_saree';
+      renderGodownOptions(select, gData.godowns, currentVal, gData.godownHierarchy);
+
+      const statusEl = document.getElementById('tallyGodownDetectStatus');
+      if (statusEl) {
+        statusEl.textContent = `Live ERP (${gData.godowns.length} Godowns found)`;
+        statusEl.style.color = '#10b981';
+      }
+    }
+  } catch (_e) {}
+}
+
+function closeGodownSetupModal() {
+  const modal = document.getElementById('modalGodownSetup');
+  if (modal) modal.classList.remove('active');
+}
+
+window.closeGodownSetupModal = closeGodownSetupModal;
+window.openGodownSetupModal = openGodownSetupModal;
+
+async function loadGodownStatus() {
+  try {
+    const res = await fetch('/api/admin/godowns/list?_t=' + Date.now());
+    const data = await res.json();
+    if (data.success) {
+      activeGodownName = data.activeGodown || 'Sarees';
+      updateGodownBadgesUI(activeGodownName);
+
+      // Populate select dropdown in modal
+      const select = document.getElementById('selectSaaSTargetGodown');
+      if (select && Array.isArray(data.godowns)) {
+        renderGodownOptions(select, data.godowns, activeGodownName, data.godownHierarchy);
+      }
+
+      // If this tenant has never completed initial setup, display wizard modal automatically!
+      if (!data.isConfigured) {
+        openGodownSetupModal();
+      }
+    }
+  } catch (err) {
+    console.warn('[loadGodownStatus] Error:', err.message);
+  }
+}
+
+function updateGodownBadgesUI(name) {
+  const badge = document.getElementById('activeGodownBadge');
+  if (badge) badge.textContent = name;
+
+  const storeBadge = document.getElementById('activeStoreHeaderBadge');
+  if (storeBadge) {
+    try {
+      const savedStore = JSON.parse(localStorage.getItem('sai_active_store') || '{}');
+      if (savedStore.name) storeBadge.textContent = savedStore.name;
+    } catch (_) {}
+  }
+
+  const adjLabel = document.getElementById('adjustModalGodownLabel');
+  if (adjLabel) adjLabel.textContent = name;
+
+  const asBadge = document.getElementById('asGodownBadge');
+  if (asBadge) asBadge.textContent = name;
+
+  const pillInStock = document.getElementById('pillInStock');
+  if (pillInStock) {
+    const countSpan = document.getElementById('countInStock');
+    const curCount = countSpan ? countSpan.textContent : '0';
+    pillInStock.innerHTML = `In Stock (${name}) (<span id="countInStock">${curCount}</span>)`;
+  }
+}
+
+function setupSaaSSpecificGodown() {
+  const btnTrigger = document.getElementById('btnGodownSetup');
+  const activeHeader = document.getElementById('activeStoreHeaderContainer');
+  const btnClose = document.getElementById('btnCloseGodownSetup');
+  const btnCancel = document.getElementById('btnCancelGodownSetup');
+  const btnSave = document.getElementById('btnSaveGodownSetup');
+  const select = document.getElementById('selectSaaSTargetGodown');
+  const btnRefresh = document.getElementById('btnRefreshGodowns');
+  const btnTestModal = document.getElementById('btnTestConnectionModal');
+  const btnToggleNewModal = document.getElementById('btnToggleNewGodownInModal');
+  const btnSyncModal = document.getElementById('btnSyncStockInModal');
+
+  if (activeHeader) {
+    activeHeader.addEventListener('click', (e) => {
+      e.preventDefault();
+      openGodownSetupModal();
+    });
+  }
+
+  if (btnTrigger) {
+    btnTrigger.addEventListener('click', () => {
+      openGodownSetupModal();
+    });
+  }
+
+  if (btnClose) btnClose.addEventListener('click', closeGodownSetupModal);
+  if (btnCancel) btnCancel.addEventListener('click', closeGodownSetupModal);
+
+  // Quick Action: + Create Godown in modal
+  if (btnToggleNewModal) {
+    btnToggleNewModal.addEventListener('click', (e) => {
+      e.preventDefault();
+      const customWrap = document.getElementById('customGodownWrap');
+      const customInp = document.getElementById('inputCustomGodownName');
+      if (select) select.value = '__NEW__';
+      if (customWrap) customWrap.style.display = 'block';
+      if (customInp) {
+        customInp.value = 'Online_Warehouse';
+        customInp.focus();
+        customInp.select();
+      }
+      if (typeof showToast === 'function') {
+        showToast('Type godown name below, then click "Save & Switch Godown"');
+      }
+    });
+  }
+
+  // Quick Action: Sync Stock Now in modal
+  if (btnSyncModal) {
+    btnSyncModal.addEventListener('click', async (e) => {
+      e.preventDefault();
+      btnSyncModal.disabled = true;
+      const originalText = btnSyncModal.innerHTML;
+      btnSyncModal.textContent = 'Syncing...';
+      try {
+        const res = await fetch('/api/sync-tally-stock', { method: 'POST' });
+        const data = await res.json();
+        if (typeof showToast === 'function') {
+          showToast(data.message || '✅ Stock synchronization completed!');
+        }
+        if (typeof loadStoredProducts === 'function') {
+          await loadStoredProducts(activeGodownName);
+        }
+      } catch (syncErr) {
+        if (typeof showToast === 'function') {
+          showToast('⚠️ Sync queued for Store PC: ' + syncErr.message);
+        }
+      } finally {
+        btnSyncModal.disabled = false;
+        btnSyncModal.innerHTML = originalText;
+      }
+    });
+  }
+
+  // Quick Action: Test / Re-check Connection in modal
+  if (btnTestModal) {
+    btnTestModal.addEventListener('click', async (e) => {
+      e.preventDefault();
+      btnTestModal.disabled = true;
+      btnTestModal.textContent = 'Testing...';
+      try {
+        const idRes = await fetch('/api/admin/tally-identity');
+        const idData = await idRes.json();
+        const storeOnline = Boolean(idData.remoteStoreConnected || idData.remoteGwOnline || idData.localTallyConnected);
+        if (typeof showToast === 'function') {
+          showToast(storeOnline 
+            ? `🟢 Connected! Laptop (${idData.currentDevice?.hostname || 'MITHUN'}) ⇄ Store PC (${idData.remoteHostname || 'AISHWARYA'}) ERP Online`
+            : `☁️ Cloud Mode: Operating via Supabase. Store PC standby.`
+          );
+        }
+        await openGodownSetupModal(idData.currentlyConnected);
+      } catch (tErr) {
+        if (typeof showToast === 'function') showToast('Connection test error: ' + tErr.message);
+      } finally {
+        btnTestModal.disabled = false;
+        btnTestModal.textContent = '↻ Check';
+      }
+    });
+  }
+
+  if (btnRefresh && select) {
+    btnRefresh.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById('tallyGodownDetectStatus');
+      if (statusEl) {
+        statusEl.textContent = 'Contacting Tally...';
+        statusEl.style.color = '#f59e0b';
+      }
+      try {
+        const res = await fetch('/api/admin/godowns/list?refresh=true&_t=' + Date.now());
+        const data = await res.json();
+        if (data.success && Array.isArray(data.godowns)) {
+          renderGodownOptions(select, data.godowns, data.activeGodown || activeGodownName, data.godownHierarchy);
+          if (statusEl) {
+            statusEl.textContent = data.tallyConnected ? `Live from Tally (${data.godowns.length} Godowns found)` : `Configured Godowns (${data.godowns.length})`;
+            statusEl.style.color = data.tallyConnected ? '#10b981' : '#60a5fa';
+          }
+          if (typeof showToast === 'function') {
+            showToast(`✅ Synced ${data.godowns.length} godowns from Tally!`);
+          }
+        }
+      } catch (err) {
+        if (statusEl) statusEl.textContent = 'Error refreshing';
+      }
+    });
+  }
+
+  if (select) {
+    select.addEventListener('change', () => {
+      const customWrap = document.getElementById('customGodownWrap');
+      if (customWrap) {
+        customWrap.style.display = select.value === '__NEW__' ? 'block' : 'none';
+        if (select.value === '__NEW__' && !document.getElementById('inputCustomGodownName').value) {
+          const inp = document.getElementById('inputCustomGodownName');
+          if (inp) {
+            inp.value = 'Online_saree';
+            inp.focus();
+          }
+        }
+      }
+      updateGodownHierarchyPreview(select.value, window.currentGodownHierarchy);
+    });
+  }
+
+  if (btnSave && select) {
+    btnSave.addEventListener('click', async () => {
+      let chosenGodown = select.value.trim();
+      let createIfMissing = false;
+      if (chosenGodown === '__NEW__') {
+        const customInp = document.getElementById('inputCustomGodownName');
+        chosenGodown = (customInp?.value || '').trim();
+        createIfMissing = true;
+        if (!chosenGodown) {
+          alert('Please enter a name for the new godown.');
+          return;
+        }
+      }
+
+      btnSave.disabled = true;
+      btnSave.textContent = 'Saving & Linking Godown...';
+
+      try {
+        const res = await fetch('/api/admin/tally-identity/pair', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            godownName: chosenGodown, 
+            createGodownIfMissing: createIfMissing,
+            companyName: lastDetectedTally?.companyName || null,
+            guid: lastDetectedTally?.guid || null
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          activeGodownName = data.godown || chosenGodown;
+          updateGodownBadgesUI(activeGodownName);
+          closeGodownSetupModal();
+          if (data.cloudOnly) {
+            showToast(`✅ Godown set to "${activeGodownName}" in Cloud! (Will link to Tally when Store PC connects)`);
+          } else {
+            showToast(`✅ Switched active Godown to "${activeGodownName}"! Refreshing inventory...`);
+          }
+          if (typeof loadSystemStatus === 'function') loadSystemStatus();
+          await loadStoredProducts(activeGodownName);
+        } else {
+          alert('Failed to configure Godown: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Error pairing Tally: ' + err.message);
+      } finally {
+        btnSave.disabled = false;
+        btnSave.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Save & Switch Godown`;
+      }
+    });
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Editing what a customer sees.
+//
+// A saree arrives from Tally named by its stock code, because that is all Tally has.
+// SAI-SILK-02 is not a name to show a customer, so the shop gives it a real one here,
+// along with a price and a description.
+//
+// The Tally code itself is never editable: change it and the next reading stops
+// matching, the saree drops to zero online, and a second draft appears for the same
+// item. It is shown, greyed, so it is obvious which Tally item is being described.
+// -----------------------------------------------------------------------------
+window.openEditProductModal = function(code) {
+  const p = (storedProducts || []).find(
+    (x) => x.sku === code || x.tally_part_number === code || x.canonical_code === code
+  );
+  if (!p) { showToast(`Could not find ${code}`); return; }
+
+  window._editingProduct = p;
+
+  const set = (id, value) => { const el = document.getElementById(id); if (el) el.value = value ?? ''; };
+  const text = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
+
+  // A drafted saree carries its stock code as a name. Offering that back as the
+  // starting value invites someone to keep it, so the field starts empty instead.
+  const tallyCode = p.tally_part_number || p.sku;
+  const isStillCode = (p.name || '').trim().toLowerCase() === String(tallyCode).trim().toLowerCase();
+
+  text('editProductTallyCode', tallyCode);
+  text('editProductStock', `${Number(p.stock_quantity) || 0} in ${activeGodownName || 'the online godown'}`);
+  set('editProductName', isStillCode ? '' : (p.name || ''));
+  set('editProductPrice', Number(p.price) > 0 ? p.price : '');
+  set('editProductMrp', Number(p.mrp) > 0 ? p.mrp : '');
+  set('editProductDescription', p.description || '');
+  set('editProductFabric', p.fabric && p.fabric !== 'Unspecified' ? p.fabric : '');
+  set('editProductColor', p.color_primary && p.color_primary !== 'Unspecified' ? p.color_primary : '');
+
+  const err = document.getElementById('editProductError');
+  if (err) err.style.display = 'none';
+
+  document.getElementById('editProductModal').classList.add('active');
+  const nameInput = document.getElementById('editProductName');
+  if (nameInput) nameInput.focus();
+};
+
+window.closeEditProductModal = function() {
+  document.getElementById('editProductModal').classList.remove('active');
+};
+
+window.submitEditProduct = async function() {
+  const p = window._editingProduct;
+  if (!p) return;
+
+  const val = (id) => (document.getElementById(id) || {}).value || '';
+  const btn = document.getElementById('btnSaveEditProduct');
+  const err = document.getElementById('editProductError');
+
+  const name = val('editProductName').trim();
+  if (!name) {
+    if (err) { err.innerText = 'Give the saree a name customers will understand.'; err.style.display = 'block'; }
+    return;
+  }
+
+  if (err) err.style.display = 'none';
+  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+
+  try {
+    const res = await fetch(`/api/products/${encodeURIComponent(p.sku || p.tally_part_number)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        price: val('editProductPrice'),
+        mrp: val('editProductMrp'),
+        description: val('editProductDescription'),
+        fabric: val('editProductFabric'),
+        color_primary: val('editProductColor')
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Could not save');
+
+    closeEditProductModal();
+    showToast(data.message || 'Saved.');
+    await loadStoredProducts(activeGodownName);
+  } catch (e) {
+    if (err) { err.innerText = e.message; err.style.display = 'block'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
+  }
+};
 
 // -----------------------------------------------------------------------------
 // 10. Sarees come from Tally, not from here
