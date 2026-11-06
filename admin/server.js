@@ -4941,6 +4941,80 @@ app.post('/api/sync-product-stock/:code', requireAdminAuth, async (req, res) => 
 
 // Delete Product: Soft Delete by default (removes from online stock & moves to Deleted view); Hard purge if ?purge=true
 /**
+ * Put a saree on sale if it is finally ready, and say what is still missing if not.
+ *
+ * Five conditions are enforced in the database by trg_enforce_listing_rules: a name, a
+ * selling price, at least one photo, a verified video, and confirmation in Tally. They
+ * are satisfied at different moments and by different people — the price while editing,
+ * the photo at upload, the video from the Videos tab, the Tally confirmation by the
+ * agent two minutes later.
+ *
+ * Checking only while editing meant a saree could become ready and sit there unlisted,
+ * because nothing looked again. So every route that can satisfy the last condition
+ * calls this, and whichever one completes the set is the one that lists it.
+ *
+ * The checklist mirrors the trigger on purpose. A checklist that disagrees with the
+ * rule is worse than no checklist, so when the two differ the database's refusal is
+ * reported verbatim rather than hidden.
+ */
+async function tryListProduct(sareeId) {
+  const headers = { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` };
+
+  const rows = await fetch(
+    `${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${sareeId}` +
+    `&select=id,sku,tally_part_number,name,price,image_urls,status,is_active,item_created_in_tally,stock_added_in_tally`,
+    { headers }
+  ).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+
+  const row = rows[0];
+  if (!row) return { listed: false, needs: ['the product no longer exists'] };
+
+  // A saree deliberately taken off sale is not waiting to be listed.
+  if (row.status === 'archived' || row.status === 'deleted') {
+    return { listed: false, offSale: true, needs: [] };
+  }
+
+  const tallyCode = row.tally_part_number || row.sku;
+  let hasVerifiedVideo = false;
+  try {
+    const vRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/video_item?select=id,video_record!inner(is_active)` +
+      `&product_code=eq.${encodeURIComponent(tallyCode)}&verified=eq.true&limit=1`,
+      { headers }
+    );
+    if (vRes.ok) {
+      const vids = await vRes.json();
+      hasVerifiedVideo = vids.some((v) => v.video_record && v.video_record.is_active);
+    }
+  } catch (_e) { /* not ready, which is the safe direction */ }
+
+  const needs = [];
+  if (!row.name || !row.name.trim()) needs.push('a name');
+  if (!(Number(row.price) > 0)) needs.push('a selling price');
+  if (!Array.isArray(row.image_urls) || row.image_urls.length < 1) needs.push('at least one photo');
+  if (!hasVerifiedVideo) needs.push('a verified video');
+  if (!row.item_created_in_tally || !row.stock_added_in_tally) needs.push('stock confirmed in Tally');
+
+  if (needs.length) return { listed: row.status === 'listed', needs };
+  if (row.status === 'listed' && row.is_active) return { listed: true, needs: [] };
+
+  const promote = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${sareeId}`, {
+    method: 'PATCH',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'listed', is_active: true, updated_at: new Date().toISOString() })
+  });
+
+  if (!promote.ok) {
+    const why = (await promote.text()).slice(0, 200);
+    console.warn(`[listing] ${row.sku} passed the checklist but the database refused: ${why}`);
+    return { listed: false, needs: [`the database refused: ${why}`] };
+  }
+
+  console.log(`[listing] ${row.sku} is now on sale to online customers`);
+  return { listed: true, needs: [], justListed: true };
+}
+
+/**
  * Edit what a customer sees.
  *
  * A saree arrives from Tally named by its stock code — SAI-SILK-02 — because that is
@@ -5011,16 +5085,9 @@ app.patch('/api/products/:id', requireAdminAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Nothing to change' });
     }
 
-    // Saving and listing are separate steps, because listing has conditions this
-    // route does not get to decide. The database enforces five of them in
-    // trg_enforce_listing_rules: a name, a selling price, at least one photo, a
-    // verified video item, and confirmation in Tally.
-    //
-    // Setting status to 'listed' and hoping was wrong — the trigger refused the whole
-    // update, so the name and price were lost too. The edits are saved first, then the
-    // same five conditions are evaluated here so the answer is a checklist of what is
-    // still needed rather than one exception about whichever check happened to fail
-    // first.
+    // Saving and listing are separate steps. Listing has five conditions enforced in
+    // the database, satisfied at different moments by different people, so the attempt
+    // lives in tryListProduct and every route that can complete the set calls it.
     patch.updated_at = new Date().toISOString();
 
     const updated = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${saree.id}`, {
@@ -5034,50 +5101,9 @@ app.patch('/api/products/:id', requireAdminAuth, async (req, res) => {
     }
 
     const row = (await updated.json())[0];
-
-    // What listing still needs. Mirrors the trigger deliberately: a checklist that
-    // disagrees with the rule is worse than no checklist.
-    const tallyCode = row.tally_part_number || row.sku;
-    let hasVerifiedVideo = false;
-    try {
-      const vRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/video_item?select=id,video_record!inner(is_active)` +
-        `&product_code=eq.${encodeURIComponent(tallyCode)}&verified=eq.true&limit=1`,
-        { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
-      );
-      if (vRes.ok) {
-        const vids = await vRes.json();
-        hasVerifiedVideo = vids.some((v) => v.video_record && v.video_record.is_active);
-      }
-    } catch (_vErr) { /* treated as not ready, which is the safe direction */ }
-
-    const needs = [];
-    if (!row.name || !row.name.trim()) needs.push('a name');
-    if (!(Number(row.price) > 0)) needs.push('a selling price');
-    if (!Array.isArray(row.image_urls) || row.image_urls.length < 1) needs.push('at least one photo');
-    if (!hasVerifiedVideo) needs.push('a verified video');
-    if (!row.item_created_in_tally || !row.stock_added_in_tally) needs.push('stock confirmed in Tally');
-
-    let listed = false;
-    if (!needs.length && row.status !== 'listed') {
-      const promote = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${saree.id}`, {
-        method: 'PATCH',
-        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'listed', is_active: true, updated_at: new Date().toISOString() })
-      });
-      listed = promote.ok;
-      if (!listed) {
-        // The trigger knows something this checklist does not. Say what it said.
-        const why = (await promote.text()).slice(0, 200);
-        console.warn(`[products] ${saree.sku} passed the checklist but the database refused to list it: ${why}`);
-        needs.push(`the database refused: ${why}`);
-      }
-    } else {
-      listed = row.status === 'listed';
-    }
+    const { listed, needs } = await tryListProduct(saree.id);
 
     console.log(`[products] ${saree.sku} saved as "${row.name}"${listed ? ', listed' : `, not listed (needs ${needs.join(', ')})`}`);
-
     return res.json({
       success: true,
       product: row,
@@ -7459,6 +7485,15 @@ app.post('/api/videos', requireAdminAuth, async (req, res) => {
       }
     }
 
+    // A verified video is usually the last condition, so look again now.
+    let listing = null;
+    try {
+      const match = await fetch(
+        `${SUPABASE_URL}/rest/v1/saree_catalog?select=id&or=(sku.eq.${encodeURIComponent(cleanCode)},tally_part_number.eq.${encodeURIComponent(cleanCode)})&limit=1`,
+        { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+      ).then((r) => (r.ok ? r.json() : []));
+      if (match[0]) listing = await tryListProduct(match[0].id);
+    } catch (_lErr) {}
     res.json({
       success: true,
       message: `Video & craftsmanship description saved for [${cleanCode}]. ${embeddedFrames} keyframes indexed.`,
@@ -7783,8 +7818,14 @@ app.post('/api/upload-photo', requireAdminAuth, express.json({ limit: '50mb' }),
       body: JSON.stringify({ image_urls: updatedUrls, updated_at: new Date().toISOString() })
     });
 
+    // A photo can be the last thing a saree was waiting for.
+    let listing = null;
+    try { if (rows[0] && rows[0].id) listing = await tryListProduct(rows[0].id); } catch (_lErr) {}
+
     res.json({
       success: true,
+      listed: listing ? listing.listed : undefined,
+      needs: listing ? listing.needs : undefined,
       publicUrl: newPublicUrls[0] || null,
       uploadedUrls: newPublicUrls,
       countUploaded: newPublicUrls.length,
