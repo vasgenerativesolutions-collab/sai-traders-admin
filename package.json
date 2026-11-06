@@ -23,7 +23,8 @@
     "test:drafts": "node scripts/test_draft_safety.js",
     "archive-orphans": "node scripts/archive_orphaned_products.js",
     "test:isolation": "node scripts/test_tenant_isolation.js",
-    "test:web": "node scripts/test_serverless_dashboard.js"
+    "test:web": "node scripts/test_serverless_dashboard.js",
+    "test:offsale": "node scripts/test_off_sale.js"
   },
   "build": {
     "appId": "com.saitraders.bridge",

@@ -4940,6 +4940,20 @@ app.post('/api/sync-product-stock/:code', requireAdminAuth, async (req, res) => 
 });
 
 // Delete Product: Soft Delete by default (removes from online stock & moves to Deleted view); Hard purge if ?purge=true
+/**
+ * Take a saree off online sale.
+ *
+ * This used to reach into Tally and set the item's opening balance to zero. That is the
+ * shop's book of record: unlisting a saree from a website must not rewrite their stock.
+ * It also only worked when Tally happened to be on the same machine, so from anywhere
+ * else it silently did nothing and reported success.
+ *
+ * Off sale now means exactly that — not visible, not sellable, not searchable — while
+ * Tally keeps whatever it holds and the counter can still sell the saree in the shop.
+ * The record stays, so photos, price and description survive and it can be put back.
+ *
+ * ?purge=true still removes the row outright, for a product created in error.
+ */
 app.delete('/api/products/:id', requireAdminAuth, async (req, res) => {
   try {
     const id = req.params.id;
@@ -4947,192 +4961,81 @@ app.delete('/api/products/:id', requireAdminAuth, async (req, res) => {
 
     const isPurge = req.query.purge === 'true' || req.query.hard === 'true';
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const shopId = (Array.isArray(req.shopIds) && req.shopIds[0]) || SHOP_ID;
+
+    // Scoped to this member's shop, so one shop cannot unlist another's products.
     const filterQuery = isUuid
       ? `id=eq.${id}`
-      : `or=(sku.ilike.${encodeURIComponent(id)},tally_part_number.ilike.${encodeURIComponent(id)},name.ilike.${encodeURIComponent(id)})`;
+      : `or=(sku.eq.${encodeURIComponent(id)},tally_part_number.eq.${encodeURIComponent(id)},name.eq.${encodeURIComponent(id)})`;
 
-    const sRes = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?${filterQuery}&limit=1`, {
-      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-    });
+    const sRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/saree_catalog?shop_id=eq.${shopId}&${filterQuery}&select=*&limit=1`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+    );
     const items = await sRes.json().catch(() => []);
     const saree = items && items[0];
-
-    const sku = saree ? (saree.sku || saree.tally_part_number || saree.name) : id;
-    const sareeId = saree ? saree.id : (isUuid ? id : null);
-
-    // Prevent morning sync or background polling from reviving the deleted item
-    try {
-      if (saree?.sku) await addManuallyDeletedSku(saree.sku);
-      if (saree?.tally_part_number) await addManuallyDeletedSku(saree.tally_part_number);
-      if (saree?.name) await addManuallyDeletedSku(saree.name);
-      await addManuallyDeletedSku(id);
-    } catch (_e) {}
-
-    // Clean deletion in Tally ERP:
-    // Zero out opening balance within Sarees group (NEVER post fake sales deduction vouchers or move to Primary)
-    let tallyItemFound = null;
-    try {
-      const activeGodown = await getTargetGodown();
-      const tallyItems = await fetchAllTallyStockItems();
-      const targetLookups = [sku, saree?.name, saree?.tally_part_number].filter(Boolean).map(x => x.toLowerCase());
-      tallyItemFound = tallyItems.find(t => {
-        const n = (t.name || '').toLowerCase();
-        const p = (t.partNo || '').toLowerCase();
-        return targetLookups.includes(n) || targetLookups.includes(p);
-      });
-
-      if (tallyItemFound) {
-        const itemName = tallyItemFound.name;
-        const isNos = /mysore|paithani|0021|0022/i.test(itemName) || (tallyItemFound.closing || '').toLowerCase().includes('nos');
-        const unitLabel = isNos ? 'Nos' : 'Pcs';
-
-        // Safely alter Tally master: set Opening Balance to 0 within Sarees group
-        const alterXml = `<?xml version="1.0" encoding="utf-8"?>
-<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
-<BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>All Masters</REPORTNAME></REQUESTDESC>
-<REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
-<STOCKITEM NAME="${escapeXml(itemName)}" ACTION="Alter">
-  <NAME>${escapeXml(itemName)}</NAME>
-  <PARENT>${escapeXml(TALLY_STOCK_GROUP)}</PARENT>
-  <OPENINGBALANCE>0 ${unitLabel}</OPENINGBALANCE>
-  <OPENINGRATE>0/${unitLabel}</OPENINGRATE>
-  <OPENINGVALUE>0</OPENINGVALUE>
-  <BATCHALLOCATIONS.LIST>
-    <GODOWNNAME>${activeGodown}</GODOWNNAME>
-    <BATCHNAME>Primary Batch</BATCHNAME>
-    <OPENINGBALANCE>0 ${unitLabel}</OPENINGBALANCE>
-    <OPENINGRATE>0/${unitLabel}</OPENINGRATE>
-    <OPENINGVALUE>0</OPENINGVALUE>
-  </BATCHALLOCATIONS.LIST>
-</STOCKITEM>
-</TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>`;
-        await sendToTally(alterXml, 3000);
-        console.log(`[DELETE /api/products] Cleanly zeroed stock for "${itemName}" in Tally ERP within Sarees group.`);
-      }
-    } catch (_tErr) {
-      console.warn(`[DELETE /api/products] Tally stock zeroing notice for ${sku}:`, _tErr.message);
+    if (!saree) {
+      return res.status(404).json({ success: false, error: `${id} is not in this shop's catalogue` });
     }
 
-    // Always remove from stock_pool so online stock is immediately ZERO and invisible in online store & WhatsApp
+    const sku = saree.sku || saree.tally_part_number || saree.name;
+
+    // Nothing may hold it for a checkout once it is off sale.
     try {
-      const spQuery = sareeId 
-        ? `or=(saree_id.eq.${sareeId},product_code.eq.${encodeURIComponent(sku)})` 
-        : `product_code.eq.${encodeURIComponent(sku)}`;
-      await fetch(`${SUPABASE_URL}/rest/v1/stock_pool?${spQuery}`, {
-        method: 'DELETE',
-        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-      });
-    } catch (_spErr) {
-      console.warn('[DELETE /api/products] stock_pool removal notice:', _spErr.message);
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/stock_pool?or=(saree_id.eq.${saree.id},product_code.eq.${encodeURIComponent(sku)})`,
+        { method: 'DELETE', headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
+      );
+    } catch (spErr) {
+      console.warn('[products] could not clear stock_pool:', spErr.message);
     }
 
     if (isPurge) {
-      // HARD PURGE: Cascade delete all records completely from Supabase
-      try {
-        if (sareeId) {
-          await fetch(`${SUPABASE_URL}/rest/v1/discrepancies?saree_id=eq.${sareeId}`, {
-            method: 'DELETE',
-            headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-          });
-        }
-        await fetch(`${SUPABASE_URL}/rest/v1/discrepancies?product_code=eq.${encodeURIComponent(sku)}`, {
-          method: 'DELETE',
-          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/video_item?product_code=eq.${encodeURIComponent(sku)}`, {
-          method: 'DELETE',
-          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/saree_frame?product_code=eq.${encodeURIComponent(sku)}`, {
-          method: 'DELETE',
-          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-        });
-      } catch (_) {}
-
-      if (sareeId) {
-        await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${sareeId}`, {
-          method: 'DELETE',
-          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-        });
-      } else {
-        await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?or=(sku.ilike.${encodeURIComponent(sku)},tally_part_number.ilike.${encodeURIComponent(sku)})`, {
-          method: 'DELETE',
-          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
-        });
+      const del = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${saree.id}`, {
+        method: 'DELETE',
+        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
+      });
+      if (!del.ok) {
+        return res.status(502).json({ success: false, error: `Could not remove ${sku}: ${(await del.text()).slice(0, 200)}` });
       }
-
-      return res.json({
-        success: true,
-        purged: true,
-        message: `Product [${sku}] permanently purged from catalog & database.`,
-        tallyReflected: Boolean(tallyItemFound)
-      });
+      console.log(`[products] purged ${sku} from the catalogue`);
+      return res.json({ success: true, purged: true, sku, message: `${sku} removed from the catalogue. Tally is untouched.` });
     }
 
-    // SOFT DELETE: Mark status as 'archived', is_active as false, stock as 0
-    // Product is removed from online stock, and visible in Deleted tab!
-    const patchPayload = {
-      status: 'archived',
-      is_active: false,
-      stock_quantity: 0,
-      updated_at: new Date().toISOString()
-    };
-
-    const patchUrl = sareeId 
-      ? `${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${sareeId}`
-      : `${SUPABASE_URL}/rest/v1/saree_catalog?or=(sku.ilike.${encodeURIComponent(sku)},tally_part_number.ilike.${encodeURIComponent(sku)})`;
-
-    const patchRes = await fetch(patchUrl, {
+    // Off sale: invisible to the storefront and to WhatsApp search, which both require
+    // is_active. The embedding is cleared too — a vector match would otherwise surface
+    // a saree nobody can buy.
+    const patch = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${saree.id}`, {
       method: 'PATCH',
-      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(patchPayload)
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation'
+      },
+      body: JSON.stringify({
+        is_active: false,
+        status: 'archived',
+        stock_quantity: 0,
+        embedding: null,
+        embedding_v2: null,
+        listing_notes: `Taken off online sale on ${new Date().toISOString().slice(0, 10)}. Tally still holds this item.`,
+        updated_at: new Date().toISOString()
+      })
     });
-    if (!patchRes.ok) {
-      const patchErr = await patchRes.text();
-      console.error('[DELETE /api/products] Supabase update failed:', patchRes.status, patchErr);
-      throw new Error(`Failed to update catalog status in cloud: ${patchErr}`);
+
+    if (!patch.ok) {
+      return res.status(502).json({ success: false, error: `Could not take ${sku} off sale: ${(await patch.text()).slice(0, 200)}` });
     }
 
-    // If local Tally is not connected, queue action for Store PC to zero out in physical Tally ERP
-    if (!isTallyLocallyConnected) {
-      const activeGodown = (await getTargetGodown()) || 'Online_saree';
-      await queuePendingTallyAction({
-        type: 'zero_stock',
-        sku: sku,
-        itemName: saree?.name || sku,
-        godown: activeGodown
-      });
-    }
-
-    // Audit log
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/audit_log`, {
-        method: 'POST',
-        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actor: 'admin',
-          action: 'soft_delete_product',
-          entity_type: 'saree_catalog',
-          entity_id: sku,
-          metadata: {
-            saree_id: sareeId,
-            name: saree?.name || sku,
-            tally_item: tallyItemFound?.name || null,
-            previous_stock: saree?.stock_quantity || 0
-          }
-        })
-      });
-    } catch (_) {}
-
-    res.json({
+    console.log(`[products] ${sku} is off online sale; Tally untouched`);
+    return res.json({
       success: true,
-      softDeleted: true,
-      message: `Product [${sku}] moved to Deleted sarees (removed from online stock).`,
-      tallyReflected: Boolean(tallyItemFound),
-      previousStock: saree?.stock_quantity || 0
+      sku,
+      offSale: true,
+      message: `${sku} is off online sale. Tally still holds it, so the counter can keep selling it in the shop.`
     });
   } catch (err) {
-    console.error('[DELETE /api/products] Error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

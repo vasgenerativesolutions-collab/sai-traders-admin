@@ -564,8 +564,15 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
 
     // Tally's rate is recorded for reference, but an existing product's price is never
     // overwritten — that figure is the owner's decision, not Tally's.
+    // A saree taken off online sale stays off, whatever Tally reports. Tally is the
+    // shop's book of record and will keep holding the item — that is the point, the
+    // counter can still sell it — but the online quantity stays at zero so no other
+    // code path can offer something the owner has withdrawn.
+    const offSale = row.status === 'archived' || row.status === 'deleted';
+    const onlineQty = offSale ? 0 : sellable;
+
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (row.stock_quantity !== sellable) patch.stock_quantity = sellable;
+    if (row.stock_quantity !== onlineQty) patch.stock_quantity = onlineQty;
     if (tallyRate > 0) patch.tally_rate = tallyRate;
 
     // Tally just told us this item exists, so record that. The dashboard's "Not in
@@ -654,6 +661,8 @@ async function applyStockReading(shopId: string, result: Record<string, unknown>
         updated_at: new Date().toISOString(),
       })
       .in('id', absent);
+    // status is deliberately untouched here: whether a saree is on sale is the owner's
+    // decision, and Tally no longer listing an item does not reverse it.
     if (!error) cleared = absent.length;
   }
 

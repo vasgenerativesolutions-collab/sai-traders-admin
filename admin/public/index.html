@@ -1320,10 +1320,6 @@
             <svg class="sync-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
             Sync All Stock
           </button>
-          <button class="btn btn-primary" id="btnOpenAddSareeModal" title="Add a new saree to catalog with photo and vector embedding">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Saree
-          </button>
         </div>
       </div>
 
@@ -2198,120 +2194,7 @@
   <!-- =========================================================================
        MODAL: ADD NEW SAREE TO CATALOG
        ========================================================================= -->
-  <div class="modal-overlay" id="addSareeModal" role="dialog" aria-modal="true">
-    <div class="modal-card" style="max-width: 540px;">
-      <div class="modal-header">
-        <h3 id="addSareeModalTitle">Add New Saree to Catalog</h3>
-        <button class="close-btn" id="closeAddSareeModalBtn" aria-label="Close dialog">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
-      </div>
 
-      <div class="modal-body">
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-          <div class="form-group">
-            <label>SKU / Base Product Code*</label>
-            <input type="text" id="asSkuInput" class="form-input" placeholder="e.g. SAI-KANJ-02" style="font-family:var(--font-mono); text-transform:uppercase;">
-          </div>
-          <div class="form-group" id="asSingleStockGroup">
-            <label>Initial Online Stock (Units)*</label>
-            <input type="number" id="asStockInput" class="form-input" min="0" value="5">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Saree Title / Product Name*</label>
-          <input type="text" id="asNameInput" class="form-input" placeholder="e.g. Royal Peacock Blue Kanjivaram Silk Saree">
-        </div>
-
-        <!-- Multi-color Variants Toggle -->
-        <div style="background:rgba(56, 189, 248, 0.08); border:1px solid rgba(56, 189, 248, 0.25); border-radius:var(--radius-sm); padding:10px 12px; margin-bottom:12px;">
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; font-weight:600; color:#38bdf8; margin:0;">
-            <input type="checkbox" id="asHasVariants" style="accent-color:#38bdf8; width:15px; height:15px; cursor:pointer;">
-            <span>Has Multiple Colors / Variants (e.g. Red, Blue with separate stock counts)</span>
-          </label>
-        </div>
-
-        <!-- Variants Dynamic Section -->
-        <div id="asVariantsSection" style="display:none; margin-bottom:14px; background:var(--bg-canvas); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <label style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin:0;">Color Variants & Stock Allocation</label>
-            <button type="button" class="btn btn-sm btn-outline" id="btnAddVariantRow" style="padding:2px 8px; font-size:11px; display:flex; align-items:center; gap:4px;">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Add Color
-            </button>
-          </div>
-          <div id="asVariantsList" style="display:flex; flex-direction:column; gap:8px;">
-            <!-- Rows injected dynamically via JS -->
-          </div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">
-            Each color will receive its own individual SKU suffix (e.g. <code>-RED</code>, <code>-BLU</code>) and tracked stock in Tally ERP.
-          </div>
-        </div>
-
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-          <div class="form-group">
-            <label>Selling Price (₹)*</label>
-            <input type="number" id="asPriceInput" class="form-input" min="0" placeholder="e.g. 6500">
-          </div>
-          <div class="form-group">
-            <label>MRP (₹)</label>
-            <input type="number" id="asMrpInput" class="form-input" min="0" placeholder="e.g. 8999">
-          </div>
-        </div>
-
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-          <div class="form-group">
-            <label>Fabric Type</label>
-            <input type="text" id="asFabricInput" class="form-input" placeholder="e.g. Pure Kanchipuram Silk">
-          </div>
-          <div class="form-group">
-            <label>Weave / Craft Style</label>
-            <input type="text" id="asWeaveInput" class="form-input" placeholder="e.g. Handwoven Zari Brocade">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <label style="margin-bottom:0; font-weight:600;">Saree Photography (Upload Multiple Photos or URLs)</label>
-            <span id="asPhotoCountBadge" style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">0 Photos Selected</span>
-          </div>
-          <div style="display:flex; gap:8px;">
-            <input type="text" id="asPhotoUrlInput" class="form-input" placeholder="Paste image URL(s) (comma-separated for multiple)">
-            <button type="button" class="btn btn-outline" id="asBtnBrowsePhoto" style="display:inline-flex; align-items:center; gap:5px; white-space:nowrap;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Select Photos
-            </button>
-            <input type="file" id="asPhotoFileInput" accept="image/*" multiple style="display:none;">
-          </div>
-          <div id="asPhotoPreviewContainer" style="display:none; margin-top:10px;">
-            <div id="asPhotoPreviewGrid" style="display:flex; gap:8px; flex-wrap:wrap; padding:8px; background:var(--bg-canvas, rgba(0,0,0,0.2)); border:1px solid var(--border); border-radius:var(--radius-sm); max-height:160px; overflow-y:auto;"></div>
-          </div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
-            Select multiple photos at once. The first photo will be used as the primary catalog cover card photo.
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Craftsmanship Description (Used for Gemini AI Multimodal Search & WhatsApp Bot)</label>
-          <textarea id="asDescriptionInput" class="form-textarea" rows="3" placeholder="Describe motifs, zari border, pallu pattern, and color shade..."></textarea>
-        </div>
-        <div class="form-group" style="margin-top:6px; margin-bottom:0; background:rgba(99,102,241,0.06); padding:10px 12px; border-radius:var(--radius-sm); border:1px solid rgba(99,102,241,0.18);">
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; font-weight:500; color:var(--text-primary); margin:0;">
-            <input type="checkbox" id="asSyncTallyCheckbox" checked style="accent-color:var(--accent-primary); width:15px; height:15px; cursor:pointer;">
-            <span>Automatically push & inward initial stock into designated Tally Godown (<strong id="asGodownBadge" style="color:var(--status-emerald);">Sarees</strong>)</span>
-          </label>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-outline" id="btnCancelAddSareeModal">Cancel</button>
-        <button class="btn btn-primary" id="btnConfirmAddSaree">
-          Save & Publish Saree
-        </button>
-      </div>
-    </div>
-  </div>
 
   <!-- Toast Notification -->
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
