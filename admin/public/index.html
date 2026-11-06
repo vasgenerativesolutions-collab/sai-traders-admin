@@ -1100,6 +1100,48 @@
     <div id="step1StoreCard" style="display:none;"></div>
 
     <!-- =========================================================================
+         STEP 3: CONNECT THE STORE PC
+         Shown straight after sign-in when this shop has no store PC connected yet.
+         Pairing used to live behind a "Pair PC" button in the dashboard header, which
+         nobody finds on the day they need it — the one day it matters is the first.
+         ========================================================================= -->
+    <div id="step3PairCard" class="cl-card" style="width:100%; max-width:440px; box-sizing:border-box; position:relative; z-index:1; display:none;">
+      <div style="margin-bottom:18px; text-align:left;">
+        <h2 style="margin:0 0 4px 0; font-size:20px; font-weight:800; color:#ffffff; letter-spacing:-0.025em;">Connect your store PC</h2>
+        <p style="margin:0; font-size:12.5px; color:#94a3b8; font-weight:500; line-height:1.5;">
+          Run the installer on the shop PC. It shows a six-character code — type it here.
+        </p>
+      </div>
+
+      <div style="margin-bottom:14px; text-align:left;">
+        <label class="cl-formFieldLabel" for="authPairCodeInput">Code from the store PC</label>
+        <input type="text" id="authPairCodeInput" class="cl-formFieldInput" placeholder="ABC123" maxlength="8"
+               autocomplete="off" spellcheck="false"
+               style="width:100%; box-sizing:border-box; padding:11px 14px; font-family:var(--font-mono); font-size:19px; font-weight:700; letter-spacing:3px; text-transform:uppercase; text-align:center;">
+      </div>
+
+      <div id="authPairError" style="display:none; color:#f87171; font-size:12px; margin-bottom:14px; padding:10px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); border-radius:8px; line-height:1.4;"></div>
+      <div id="authPairOk" style="display:none; color:#34d399; font-size:12px; margin-bottom:14px; padding:10px 12px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25); border-radius:8px; line-height:1.4;"></div>
+
+      <button type="button" id="btnAuthPair" onclick="submitAuthPairCode()" class="cl-formButtonPrimary"
+              style="width:100%; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:10px;">
+        <span>Connect this PC</span>
+      </button>
+
+      <button type="button" onclick="skipAuthPairStep()" class="btn btn-outline"
+              style="width:100%; box-sizing:border-box; height:38px; font-size:12.5px;">
+        Skip for now
+      </button>
+
+      <div style="margin-top:16px; padding:11px 12px; background:rgba(148,163,184,0.06); border:1px solid rgba(148,163,184,0.12); border-radius:8px;">
+        <p style="margin:0; font-size:11.5px; color:#94a3b8; line-height:1.55;">
+          On the shop PC, in PowerShell:<br>
+          <code style="font-family:var(--font-mono); font-size:11px; color:#cbd5e1; word-break:break-all;">irm https://raw.githubusercontent.com/vasgenerativesolutions-collab/sai-traders-admin/main/scripts/install-agent.ps1 | iex</code>
+        </p>
+      </div>
+    </div>
+
+    <!-- =========================================================================
          STEP 2 CONTAINER: PURE SUPABASE AUTHENTICATION (FOR ADMINS)
          ========================================================================= -->
     <div id="step2AuthCard" class="cl-card" style="width:100%; max-width:440px; box-sizing:border-box; position:relative; z-index:1; display:none;">
@@ -1186,17 +1228,7 @@
 
         <button class="btn btn-outline" id="btnGodownSetup" style="display:none;" title="Legacy godown trigger"></button>
 
-        <!-- Pair PC Terminal (6-Character Code) -->
-        <button class="header-icon-btn" id="btnHeaderPairDevice" onclick="openPairDeviceModal()" title="Pair New Store Terminal (6-Character Code)">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          <span>Pair PC</span>
-        </button>
 
-        <!-- Connected Terminals Manager -->
-        <button class="header-icon-btn" id="btnHeaderConnectedDevices" onclick="openConnectedDevicesModal()" title="Manage Paired Terminals & Godowns">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <span>Devices</span>
-        </button>
 
         <!-- Actions -->
         <button class="header-icon-btn" id="btnMorningSync" title="Sync Tally Closing Balances with Catalog">
@@ -1204,9 +1236,6 @@
           <span>Sync</span>
         </button>
 
-        <button class="header-icon-btn" onclick="const cur = localStorage.getItem('sai_api_base_url') || window.location.origin; const u = prompt('Configure Backend API URL (leave empty for same-origin server):', cur); if (u !== null) window.setSaiApiBaseUrl(u);" title="Configure Backend API Server URL">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
 
         <button class="header-icon-btn icon-only" id="btnRefresh" title="Refresh Live Data">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -1978,106 +2007,12 @@
   <!-- =========================================================================
        MODAL: PAIR & LOCK PC TERMINAL (ZEE5 6-CHARACTER ACTIVATION)
        ========================================================================= -->
-  <div class="modal-overlay" id="modalPairDevice" role="dialog" aria-modal="true">
-    <div class="modal-card" style="max-width: 480px;">
-      <div class="modal-header">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div style="width:34px; height:34px; border-radius:var(--radius-sm); background:rgba(59, 130, 246, 0.15); color:#60a5fa; display:flex; align-items:center; justify-content:center;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          </div>
-          <div>
-            <h3 style="margin:0; font-size:15px; font-weight:700;">Pair &amp; Lock PC Terminal</h3>
-            <div style="font-size:11px; color:var(--text-muted);">Zee5 6-Character Terminal Activation</div>
-          </div>
-        </div>
-        <button class="close-btn" onclick="closePairDeviceModal()" aria-label="Close dialog">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
-      </div>
 
-      <div class="modal-body">
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">
-            6-Character Code shown on the PC screen*
-          </label>
-          <input type="text" id="inputPairDeviceCode" class="form-input" placeholder="e.g. K9T-4W2" maxlength="7" style="height:44px; font-family:var(--font-mono); font-size:18px; font-weight:700; letter-spacing:2px; text-transform:uppercase; text-align:center;">
-        </div>
-
-        <div class="form-group" style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">
-            Terminal Name / Location Label*
-          </label>
-          <input type="text" id="inputPairDeviceName" class="form-input" placeholder="e.g. Counter 1 - Showroom" style="height:38px;">
-        </div>
-
-        <div class="form-group" style="margin-bottom:16px;">
-          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">
-            Godown to Lock This Terminal To (billing terminals only)
-          </label>
-          <select id="selectPairDeviceGodown" class="form-input" style="height:38px; cursor:pointer;">
-            <option value="Online_saree" selected>📦 Online_saree (Default)</option>
-            <option value="Main Location">📦 Main Location</option>
-            <option value="Sarees">📁 Sarees</option>
-            <option value="Tumakuru Showroom">📦 Tumakuru Showroom</option>
-          </select>
-        </div>
-
-        <div style="background:rgba(59, 130, 246, 0.08); border:1px solid rgba(59, 130, 246, 0.25); border-radius:var(--radius-sm); padding:10px 12px; display:flex; gap:10px; align-items:flex-start;">
-          <span style="font-size:16px; line-height:1;">🔒</span>
-          <div style="font-size:11.5px; color:#cbd5e1; line-height:1.45;">
-            <strong>Hardware Godown Lock:</strong> Once paired, this PC terminal will be permanently locked to this Godown. It will strictly access only this godown's products, stock, media, and sales. Only Master Admin can reassign or unpair it.
-          </div>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closePairDeviceModal()">Cancel</button>
-        <button class="btn btn-primary" id="btnApprovePairDevice" onclick="submitApproveDeviceCode()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-          Authorize &amp; Lock Terminal
-        </button>
-      </div>
-    </div>
-  </div>
 
   <!-- =========================================================================
        MODAL: CONNECTED TERMINALS & GODOWN LOCK REGISTRY
        ========================================================================= -->
-  <div class="modal-overlay" id="modalConnectedDevices" role="dialog" aria-modal="true">
-    <div class="modal-card" style="max-width: 680px;">
-      <div class="modal-header">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div style="width:34px; height:34px; border-radius:var(--radius-sm); background:rgba(16, 185, 129, 0.15); color:#10b981; display:flex; align-items:center; justify-content:center;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          </div>
-          <div>
-            <h3 style="margin:0; font-size:15px; font-weight:700;">Paired Terminals &amp; Devices</h3>
-            <div style="font-size:11px; color:var(--text-muted);">Hardware Godown Locks &amp; Cloud Registry</div>
-          </div>
-        </div>
-        <button class="close-btn" onclick="closeConnectedDevicesModal()" aria-label="Close dialog">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
-      </div>
 
-      <div class="modal-body">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <div id="deviceRegistryRoleBanner" style="font-size:12px; color:#94a3b8;">
-            Signed in as: <strong id="currentAdminEmailBadge" style="color:#ffffff;">Checking...</strong>
-          </div>
-          <button class="btn btn-outline" style="font-size:11.5px; padding:3px 8px; height:28px;" onclick="loadConnectedDevicesList()">↻ Refresh List</button>
-        </div>
-
-        <div id="connectedDevicesListContainer" style="display:flex; flex-direction:column; gap:8px; max-height:360px; overflow-y:auto;">
-          <div style="text-align:center; padding:30px; color:#94a3b8; font-size:12px;">Loading connected devices...</div>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeConnectedDevicesModal()">Close</button>
-      </div>
-    </div>
-  </div>
 
   <!-- =========================================================================
        MODAL: ADJUST STOCK IN TALLY
@@ -2973,25 +2908,7 @@
     // =========================================================================
     // MODAL DIALOGS FOR DEVICE PAIRING & MANAGEMENT
     // =========================================================================
-    window.openPairDeviceModal = function() {
-      const modal = document.getElementById('modalPairDevice');
-      if (modal) {
-        modal.classList.add('active');
-        const codeInput = document.getElementById('inputPairDeviceCode');
-        if (codeInput) {
-          codeInput.value = '';
-          codeInput.focus();
-        }
-        loadGodownsIntoSelect('selectPairDeviceGodown');
-      }
-    };
-
-    window.closePairDeviceModal = function() {
-      const modal = document.getElementById('modalPairDevice');
-      if (modal) modal.classList.remove('active');
-    };
-
-    window.submitApproveDeviceCode = async function() {
+            window.submitApproveDeviceCode = async function() {
       const codeInput = document.getElementById('inputPairDeviceCode');
       const nameInput = document.getElementById('inputPairDeviceName');
       const godownSelect = document.getElementById('selectPairDeviceGodown');
@@ -3072,20 +2989,7 @@
       }
     };
 
-    window.openConnectedDevicesModal = function() {
-      const modal = document.getElementById('modalConnectedDevices');
-      if (modal) {
-        modal.classList.add('active');
-        loadConnectedDevicesList();
-      }
-    };
-
-    window.closeConnectedDevicesModal = function() {
-      const modal = document.getElementById('modalConnectedDevices');
-      if (modal) modal.classList.remove('active');
-    };
-
-    async function loadConnectedDevicesList() {
+            async function loadConnectedDevicesList() {
       const container = document.getElementById('connectedDevicesListContainer');
       const emailBadge = document.getElementById('currentAdminEmailBadge');
       if (container) container.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">Loading devices...</div>';
@@ -3228,7 +3132,7 @@
         } else if (data && data.session) {
           window.supabaseToken = data.session.access_token;
           setAuthCookie(data.session.access_token);
-          revealDashboard(data.user, 'supabase');
+          await continueAfterSignIn(data.user);
         }
       } catch (err) {
         if (errBox) {
@@ -3237,6 +3141,126 @@
         }
       } finally {
         if (btn) { btn.disabled = false; btn.innerText = 'Sign In & Unlock Console'; }
+      }
+    };
+
+    // ---------------------------------------------------------------------------
+    // Connecting the store PC, as part of signing in.
+    //
+    // This used to be a "Pair PC" button in the dashboard header, beside a "Devices"
+    // manager and a cog that asked for an API address. Nobody finds a header button on
+    // the one day it matters, which is the first day. So after sign-in, if this shop has
+    // no store PC reporting, the code is asked for straight away — and if one is already
+    // connected the step never appears.
+    // ---------------------------------------------------------------------------
+    async function shopHasLivePc() {
+      try {
+        const token = window.supabaseToken || localStorage.getItem('sb_access_token') || '';
+        if (!token) return true;   // cannot tell; never block the way in
+        const res = await fetch(
+          `${window.SAI_SUPABASE_URL}/rest/v1/agent_devices?select=device_name,last_seen_at&status=eq.active&revoked_at=is.null&order=last_seen_at.desc&limit=1`,
+          { headers: { apikey: window.SAI_SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) return true;
+        const rows = await res.json();
+        const device = Array.isArray(rows) ? rows[0] : null;
+        if (!device || !device.last_seen_at) return false;
+
+        // Reporting NOW, not merely enrolled once. Asking only whether a row exists
+        // would leave a shop unable to replace a broken PC: the dead one still counts
+        // as active, so the step would never appear and nothing else offers pairing.
+        const ageMin = (Date.now() - new Date(device.last_seen_at).getTime()) / 60000;
+        window._lastPcName = device.device_name || null;
+        window._lastPcAgeMin = Math.round(ageMin);
+        return ageMin < 10;
+      } catch (_) {
+        return true;   // a lookup failure must never lock someone out of their dashboard
+      }
+    }
+
+    async function continueAfterSignIn(user) {
+      if (await shopHasLivePc()) {
+        revealDashboard(user, 'supabase');
+        return;
+      }
+      window._pendingAuthUser = user;
+      const authCard = document.getElementById('step2AuthCard');
+      const zee5Card = document.getElementById('stepZee5PairCard');
+      const pairCard = document.getElementById('step3PairCard');
+      if (authCard) authCard.style.display = 'none';
+      if (zee5Card) zee5Card.style.display = 'none';
+      if (pairCard) pairCard.style.display = 'block';
+      // One card, two situations. A shop whose PC is simply switched off should be
+      // told that, not invited to set up something it already has.
+      if (window._lastPcName) {
+        const h = pairCard.querySelector('h2');
+        const p = pairCard.querySelector('p');
+        if (h) h.innerText = 'Your store PC is not reporting';
+        if (p) {
+          p.innerHTML = '<strong>' + window._lastPcName + '</strong> last reported ' +
+            (window._lastPcAgeMin < 120 ? window._lastPcAgeMin + ' minutes ago' : Math.round(window._lastPcAgeMin / 60) + ' hours ago') +
+            '. Start the agent on it, or connect a different PC with the code it shows.';
+        }
+      }
+
+      const input = document.getElementById('authPairCodeInput');
+      if (input) input.focus();
+    }
+
+    window.skipAuthPairStep = function() {
+      revealDashboard(window._pendingAuthUser || null, 'supabase');
+    };
+
+    window.submitAuthPairCode = async function() {
+      const input = document.getElementById('authPairCodeInput');
+      const btn = document.getElementById('btnAuthPair');
+      const errBox = document.getElementById('authPairError');
+      const okBox = document.getElementById('authPairOk');
+      const code = (input ? input.value : '').trim().toUpperCase();
+
+      if (errBox) errBox.style.display = 'none';
+      if (okBox) okBox.style.display = 'none';
+
+      if (code.length < 4) {
+        if (errBox) { errBox.innerText = 'Enter the code shown on the store PC.'; errBox.style.display = 'block'; }
+        return;
+      }
+
+      if (btn) { btn.disabled = true; btn.innerText = 'Connecting...'; }
+      try {
+        const token = window.supabaseToken || localStorage.getItem('sb_access_token') || '';
+        const res = await fetch(`${window.SAI_SUPABASE_URL}/functions/v1/agent-sync/approve`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: window.SAI_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ code })
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          // Say which thing went wrong. "Pairing failed" sends someone to retype a code
+          // that was never the problem.
+          const reasons = {
+            unknown_code: 'That code does not match any store PC. Check it on the PC screen — a new one appears if the agent restarts.',
+            code_expired: 'That code has expired. Restart the agent on the store PC to get a fresh one.',
+            device_revoked: 'That PC was disconnected. Restart the agent on it to enroll again.',
+            not_your_shop: 'That code belongs to a different shop.',
+            sign_in_required: 'Your session expired. Sign in again.'
+          };
+          throw new Error(reasons[data.error] || data.error || `Pairing failed (${res.status})`);
+        }
+
+        if (okBox) {
+          okBox.innerText = `Connected: ${data.deviceName || 'store PC'}. Opening your dashboard...`;
+          okBox.style.display = 'block';
+        }
+        setTimeout(() => revealDashboard(window._pendingAuthUser || null, 'supabase'), 900);
+      } catch (err) {
+        if (errBox) { errBox.innerText = err.message; errBox.style.display = 'block'; }
+        if (btn) { btn.disabled = false; btn.innerText = 'Connect this PC'; }
       }
     };
 
