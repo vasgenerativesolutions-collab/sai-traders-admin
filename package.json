@@ -26,7 +26,8 @@
     "test:web": "node scripts/test_serverless_dashboard.js",
     "test:offsale": "node scripts/test_off_sale.js",
     "test:listing": "node scripts/test_listing_path.js",
-    "test:hosted": "node scripts/test_hosted_workflow.js"
+    "test:hosted": "node scripts/test_hosted_workflow.js",
+    "stamp": "node scripts/stamp_assets.js --write"
   },
   "build": {
     "appId": "com.saitraders.bridge",
