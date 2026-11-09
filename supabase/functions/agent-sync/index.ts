@@ -408,8 +408,63 @@ async function setOffSale(req: Request, body: Record<string, unknown>) {
   });
 }
 
+/** Which of the four allowed sources this video came from. */
+function deriveVideoSource(given: unknown, url: string | null): string {
+  const allowed = ['instagram', 'youtube', 'studio', 'direct_upload'];
+  const asked = String(given || '').trim().toLowerCase();
+  if (allowed.includes(asked)) return asked;
+  const link = String(url || '').toLowerCase();
+  if (link.includes('instagram')) return 'instagram';
+  if (link.includes('youtube') || link.includes('youtu.be')) return 'youtube';
+  if (link) return 'direct_upload';
+  return 'studio';
+}
 /**
- * Record a video for a saree, which is one of the five listing conditions.
+ * An embedding for a piece of text or an image, used to make a saree findable.
+ *
+ * The shared helper only does text, and a video is mostly frames, so this talks to the
+ * same model with either kind of part.
+ */
+async function embed(part: Record<string, unknown>): Promise<number[] | null> {
+  const key = Deno.env.get('GEMINI_API_KEY');
+  if (!key) return null;
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'models/gemini-embedding-001',
+          content: { parts: [part] },
+          outputDimensionality: 768,
+        }),
+      }
+    );
+    if (!res.ok) {
+      console.error('[add-video] embedding refused:', (await res.text()).slice(0, 200));
+      return null;
+    }
+    const body = await res.json();
+    const values = body?.embedding?.values;
+    return Array.isArray(values) ? values : null;
+  } catch (err) {
+    console.error('[add-video] embedding failed:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
+ * Record a video for a saree.
+ *
+ * A video is one of the five conditions for going on sale, but it is also how a
+ * customer's photograph is matched to a saree: the keyframes the shop captures become
+ * image embeddings, and the description becomes a text embedding.
+ *
+ * The first version of this stored only the video id and threw the rest away. The
+ * listing condition was satisfied, so it looked like it had worked, while the frames
+ * and the attributes the shop had just typed went nowhere and image search was never
+ * taught the saree. Half a job that reports success is worse than a failure.
  *
  * The product code must be the Tally code: the listing guard matches on it, so a video
  * filed under anything else satisfies nothing and gives no clue why.
@@ -424,15 +479,45 @@ async function addVideo(req: Request, body: Record<string, unknown>) {
   const saree = await memberProduct(member.shopIds, code);
   if (!saree) return json({ error: 'unknown_product' }, 404);
 
-  const tallyCode = saree.tally_part_number || saree.sku;
-  const videoId = String(body.video_id || `vid_${String(tallyCode).toLowerCase()}_${Date.now()}`).trim();
+  const tallyCode = String(saree.tally_part_number || saree.sku);
+  const videoId = String(body.video_id || `vid_${tallyCode.toLowerCase()}_${Date.now()}`).trim();
   const sourceUrl = typeof body.source_url === 'string' ? body.source_url.trim().slice(0, 500) : null;
+  const description = typeof body.video_description === 'string' ? body.video_description.trim().slice(0, 2000) : '';
+
+  // The craft attributes the shop typed, kept together with the summary, exactly as the
+  // store server stores them so both routes produce the same shape.
+  const attrs: Record<string, unknown> = {
+    ...(body.craft_attributes && typeof body.craft_attributes === 'object' ? body.craft_attributes as Record<string, unknown> : {}),
+  };
+  if (description) attrs.stylist_summary = description;
+
+  const frames = Array.isArray(body.reference_frames)
+    ? (body.reference_frames as Record<string, unknown>[]).slice(0, 12)
+    : [];
+
+  // Frames are kept without their image data: the pictures become embeddings below, and
+  // storing base64 JPEGs in a jsonb column would bloat every read of this row.
+  const frameIndex = frames.map((f) => ({
+    timestamp_sec: Number(f.timestamp_sec) || 0,
+    mimeType: String(f.mimeType || 'image/jpeg'),
+  }));
 
   const { error: recErr } = await db.from('video_record').upsert({
     video_id: videoId,
     product_code: tallyCode,
+    // source is constrained to instagram, youtube, studio or direct_upload. It is
+    // derived from the link when there is one, because the website does not ask: a
+    // value outside that list is refused and the whole video is lost with it.
+    source: deriveVideoSource(body.source, sourceUrl),
     source_url: sourceUrl,
+    saree: attrs,
+    reference_frames: frameIndex,
     is_active: true,
+    verified: true,
+    verified_by: member.email || 'dashboard',
+    verified_at: new Date().toISOString(),
+    review_notes: description || null,
+    updated_at: new Date().toISOString(),
   }, { onConflict: 'video_id' });
   if (recErr) return json({ error: 'video_record_failed', detail: recErr.message }, 500);
 
@@ -440,17 +525,67 @@ async function addVideo(req: Request, body: Record<string, unknown>) {
     video_id: videoId,
     product_code: tallyCode,
     verified: true,
-    notes: typeof body.notes === 'string' ? body.notes.slice(0, 500) : null,
-    // video_item is unique on (video_id, product_code), not on video_id alone.
+    attrs,
+    notes: description || null,
   }, { onConflict: 'video_id,product_code' });
   if (itemErr) return json({ error: 'video_item_failed', detail: itemErr.message }, 500);
 
+  // What makes the saree findable. A failure here is reported, not swallowed: the video
+  // is recorded either way, but the shop must know image search was not taught.
+  const textFor = [
+    tallyCode, 'saree', description,
+    attrs.fabric, attrs.weave_style, attrs.color_primary, attrs.border_type, attrs.zari_type,
+  ].filter(Boolean).join(' ');
+
+  const textEmb = await embed({ text: textFor });
+  let framesIndexed = 0;
+
+  for (const frame of frames) {
+    const raw = typeof frame.base64 === 'string' ? frame.base64 : '';
+    if (!raw) continue;
+    const data = raw.replace(/^data:image\/\w+;base64,/, '');
+    const imageEmb = await embed({ inline_data: { mime_type: String(frame.mimeType || 'image/jpeg'), data } });
+
+    const { error } = await db.from('saree_frame').insert({
+      video_id: videoId,
+      product_code: tallyCode,
+      timestamp_sec: Number(frame.timestamp_sec) || 0,
+      attrs,
+      image_emb: imageEmb,
+      text_emb: textEmb,
+      embedding_model: 'gemini-embedding-001',
+      embedding_dim: 768,
+      verified: true,
+    });
+    if (!error && imageEmb) framesIndexed++;
+  }
+
+  // The product's own embedding, which is what a text search matches against.
+  if (textEmb) {
+    await db.from('saree_catalog')
+      .update({ embedding: textEmb, embedding_model: 'gemini-embedding-001', embedding_dim: 768 })
+      .eq('id', saree.id);
+  }
+
   const { listed, needs } = await listIfReady(saree.id);
+
+  const indexing = framesIndexed
+    ? `${framesIndexed} of ${frames.length} frame(s) indexed for image search`
+    : frames.length
+      ? 'the frames could not be indexed for image search'
+      : 'no keyframes were captured, so image search has nothing to match';
+
   return json({
-    ok: true, videoId, listed, needs,
+    ok: true,
+    videoId,
+    framesIndexed,
+    framesGiven: frames.length,
+    textIndexed: Boolean(textEmb),
+    listed,
+    needs,
     message: listed
-      ? `Video added, and ${saree.sku} is now on sale.`
-      : `Video added. Still needed before it goes on sale: ${needs.join(', ')}.`,
+      ? `Video added and ${saree.sku} is now on sale. ${indexing}.`
+      : `Video added. ${indexing}. Still needed before it goes on sale: ${needs.join(', ')}.`,
   });
 }
 

@@ -253,6 +253,60 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
     bad(`cannot read stock: ${err.message}`);
   }
 
+  // --- image and text search -------------------------------------------------
+  //
+  // Attaching a video is how a customer's photograph gets matched to a saree: the
+  // keyframes become image embeddings and the description becomes a text embedding.
+  // All of that needs a working Gemini key, and without one the video is still
+  // recorded and the saree still goes on sale — so the feature reports success while
+  // doing none of its actual work. That is worth a line of its own.
+  section('Image and text search');
+  try {
+    const key = E.GEMINI_API_KEY;
+    if (!key) {
+      bad('no Gemini API key is set', 'add GEMINI_API_KEY to .env, then: npx supabase secrets set --env-file .env');
+    } else {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'models/gemini-embedding-001',
+            content: { parts: [{ text: 'saree' }] },
+            outputDimensionality: 768,
+          }),
+          signal: AbortSignal.timeout(15000),
+        }
+      );
+
+      if (res.ok) {
+        good('the Gemini key works, so videos and photos can be indexed');
+      } else if (res.status === 401 || res.status === 403) {
+        bad(`the Gemini key is rejected (HTTP ${res.status})`,
+          'get a new key at aistudio.google.com/apikey, put it in .env as GEMINI_API_KEY, then: npx supabase secrets set --env-file .env');
+        console.log(`${C.dim}       until then a video is recorded but image search is never taught the saree${C.off}`);
+      } else {
+        note(`Gemini answered HTTP ${res.status}`, 'embeddings may be failing — check the key and the quota');
+      }
+    }
+
+    // How many sellable sarees a customer could actually find by searching.
+    const indexed = await api('saree_catalog?select=sku&is_active=eq.true&embedding=not.is.null');
+    const sellable = await api('saree_catalog?select=sku&is_active=eq.true&stock_quantity=gt.0');
+    if (sellable.length) {
+      const missing = sellable.length - indexed.length;
+      if (missing > 0) {
+        note(`${missing} of ${sellable.length} sellable saree(s) cannot be found by search`,
+          'they have no embedding yet — attach a video, or run: npm run reembed');
+      } else {
+        good(`all ${sellable.length} sellable saree(s) can be found by search`);
+      }
+    }
+  } catch (err) {
+    note(`could not check search indexing: ${err.message}`);
+  }
+
   // --- the dashboard's own assets -------------------------------------------
   //
   // index.html loads the script with a ?v= stamp. GitHub Pages serves it with
