@@ -672,6 +672,63 @@ async function attachPhoto(req: Request, body: Record<string, unknown>) {
   });
 }
 
+/**
+ * Whether WhatsApp is actually working, answered without handing out the token.
+ *
+ * The dashboard asked the store server, which read the token and returned a masked
+ * copy. Hosted on its own it had nothing to ask, so the badge simply read "Offline"
+ * whatever the truth was — and "offline" when a thing is merely unreachable is a lie
+ * that sends someone to fix the wrong end.
+ *
+ * The token stays here. What goes back is what a person needs: whether messages can be
+ * sent, from which number, and whether that number is Meta's sandbox, which can only
+ * reach registered testers.
+ */
+async function whatsappStatus(req: Request) {
+  const member = await authenticateMember(req);
+  if (!member) return json({ error: 'sign_in_required' }, 401);
+
+  const token = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
+  const phoneId = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID');
+
+  if (!token || !phoneId) {
+    return json({ ok: true, connected: false, reason: 'no_credentials',
+      notice: 'No WhatsApp number is connected yet.' });
+  }
+
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/${phoneId}?fields=display_phone_number,verified_name,quality_rating`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }
+    );
+    const info = await res.json();
+
+    if (!res.ok) {
+      const why = info?.error?.message || `HTTP ${res.status}`;
+      return json({ ok: true, connected: false, reason: 'rejected',
+        notice: `WhatsApp refused this token: ${String(why).slice(0, 120)}` });
+    }
+
+    const name = String(info.verified_name || '');
+    const sandbox = /^test/i.test(name);
+
+    return json({
+      ok: true,
+      connected: true,
+      sandbox,
+      number: info.display_phone_number || null,
+      name: name || null,
+      quality: info.quality_rating || null,
+      notice: sandbox
+        ? `Connected to Meta's test number — it can only message registered testers.`
+        : `Connected as ${name}.`,
+    });
+  } catch (err) {
+    return json({ ok: true, connected: false, reason: 'unreachable',
+      notice: `Could not reach WhatsApp: ${err instanceof Error ? err.message : 'unknown error'}` });
+  }
+}
+
 /** How a queued job is getting on, for the member who asked for it. */
 async function jobStatus(req: Request, body: Record<string, unknown>) {
   const member = await authenticateMember(req);
@@ -1225,6 +1282,7 @@ Deno.serve(async (req) => {
       case 'set-off-sale': return await setOffSale(req, body);
       case 'add-video': return await addVideo(req, body);
       case 'attach-photo': return await attachPhoto(req, body);
+      case 'whatsapp-status': return await whatsappStatus(req);
       default: return json({ error: 'unknown_action', action }, 404);
     }
   } catch (err) {

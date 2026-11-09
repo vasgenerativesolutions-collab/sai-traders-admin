@@ -335,6 +335,91 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
       return { success: true, url, publicUrl: url, ...res.body };
     },
 
+    // Whether WhatsApp can actually send. Answered by the function, because the token
+    // lives there and must not come near a browser.
+    async whatsappStatus() {
+      const res = await this.fn('whatsapp-status', {});
+      if (!res.ok) return { success: false, error: res.body.error || 'Could not check WhatsApp' };
+      const b = res.body;
+      return {
+        success: true,
+        configured: b.connected,
+        connected: b.connected,
+        sandbox: b.sandbox || false,
+        number: b.number,
+        name: b.name,
+        notice: b.notice,
+        hasToken: b.connected,
+      };
+    },
+
+    // Sales, worked out from the orders themselves rather than asked of a server.
+    async analytics(period) {
+      const days = { today: 1, week: 7, month: 30, year: 365 }[String(period || 'month')] || 30;
+      const since = new Date(Date.now() - days * 86400000).toISOString();
+
+      const orders = await this.rest(
+        `orders?select=id,items,total_amount,status,payment_status,created_at` +
+        `&created_at=gte.${since}&order=created_at.desc&limit=1000`
+      );
+
+      let totalRevenue = 0;
+      let totalUnitsSold = 0;
+      let completedOrders = 0;
+      const bySaree = new Map();
+
+      for (const o of orders) {
+        // Revenue counts what was actually paid for. Counting every order as revenue
+        // would flatter the figure with abandoned baskets.
+        const paid = o.payment_status === 'paid' || o.status === 'delivered' || o.status === 'confirmed';
+        if (paid) {
+          totalRevenue += Number(o.total_amount) || 0;
+          completedOrders++;
+        }
+
+        const items = Array.isArray(o.items) ? o.items : [];
+        for (const it of items) {
+          const units = Number(it.quantity || it.qty || 1) || 1;
+          if (paid) totalUnitsSold += units;
+          const name = it.name || it.sku || it.product_code || 'Unnamed';
+          const row = bySaree.get(name) || { name, units: 0, revenue: 0 };
+          row.units += units;
+          row.revenue += (Number(it.price) || 0) * units;
+          bySaree.set(name, row);
+        }
+      }
+
+      const topSarees = [...bySaree.values()].sort((a, b) => b.units - a.units).slice(0, 5);
+
+      return {
+        success: true,
+        period: period || 'month',
+        metrics: {
+          totalRevenue,
+          totalOrders: orders.length,
+          completedOrders,
+          totalUnitsSold,
+          averageOrderValue: completedOrders ? Math.round(totalRevenue / completedOrders) : 0,
+          topSarees,
+        },
+      };
+    },
+
+    // Reconciliation: where Tally and the catalogue disagreed.
+    async discrepancies(status) {
+      const filter = status && status !== 'all' ? `&status=eq.${encodeURIComponent(status)}` : '';
+      const rows = await this.rest(
+        `discrepancies?select=*${filter}&order=created_at.desc&limit=200`
+      );
+      return { success: true, discrepancies: rows, items: rows, count: rows.length };
+    },
+
+    // What the morning syncs did.
+    async syncRuns() {
+      const rows = await this.rest('sync_runs?select=*&order=started_at.desc&limit=30');
+      return { success: true, runs: rows, items: rows };
+    },
+
     // Pair a store PC by the code it displays.
     async pair(code) {
       const res = await this.fn('approve', { code });
@@ -381,6 +466,19 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
           return SERVERLESS.reply(await SERVERLESS.editProduct(code, body));
         }
         if (method === 'DELETE') return SERVERLESS.reply(await SERVERLESS.offSale(code, false));
+      }
+
+      if (path === '/api/whatsapp-token') return SERVERLESS.reply(await SERVERLESS.whatsappStatus());
+      if (path === '/api/sync/runs') return SERVERLESS.reply(await SERVERLESS.syncRuns());
+
+      if (path === '/api/admin/analytics/sales') {
+        const period = (String(url).split('period=')[1] || '').split('&')[0];
+        return SERVERLESS.reply(await SERVERLESS.analytics(period));
+      }
+
+      if (path === '/api/discrepancies') {
+        const status = (String(url).split('status=')[1] || '').split('&')[0];
+        return SERVERLESS.reply(await SERVERLESS.discrepancies(status));
       }
 
       if (path === '/api/auth/device-pair' && method === 'POST') {
@@ -697,21 +795,35 @@ async function loadSystemStatus() {
       }
     }
 
-    // WhatsApp Live Token Indicator
+    // WhatsApp indicator.
+    //
+    // It read "Active" or "Offline" from whether a token existed. A token can exist and
+    // be expired, and Meta's sandbox number cannot message a single real customer — both
+    // showed as Active. "Offline" also appeared whenever the status could not be
+    // checked, which sends someone to fix WhatsApp when the problem was elsewhere.
     try {
       const waRes = await fetch('/api/whatsapp-token');
       const waData = await waRes.json();
       const waDot = document.getElementById('waDot');
       const waText = document.getElementById('waStatusText');
       if (waDot && waText) {
-        if (waData.hasToken) {
+        if (waData.connected && waData.sandbox) {
           waDot.className = 'status-dot';
-          waText.innerText = 'Active';
-          waDot.title = 'Meta WhatsApp Cloud API webhook active and responding';
+          waDot.style.background = '#f59e0b';
+          waText.innerText = 'Test number';
+          waDot.title = waData.notice
+            || 'Connected to Meta\'s test number — it can only message registered testers.';
+        } else if (waData.connected || waData.hasToken) {
+          waDot.className = 'status-dot';
+          waDot.style.background = '#10b981';
+          waText.innerText = waData.number ? 'Active' : 'Active';
+          waDot.title = waData.notice || `WhatsApp connected${waData.number ? ' as ' + waData.number : ''}.`;
         } else {
           waDot.className = 'status-dot offline';
-          waText.innerText = 'Offline';
-          waDot.title = 'WhatsApp Token missing or unverified';
+          waDot.style.background = '#64748b';
+          // Say which it is: not connected, or could not be checked.
+          waText.innerText = waData.success === false ? 'Unknown' : 'Not connected';
+          waDot.title = waData.notice || waData.error || 'No WhatsApp number is connected.';
         }
       }
     } catch (_e) {}
