@@ -27,7 +27,8 @@
     "test:offsale": "node scripts/test_off_sale.js",
     "test:listing": "node scripts/test_listing_path.js",
     "test:hosted": "node scripts/test_hosted_workflow.js",
-    "stamp": "node scripts/stamp_assets.js --write"
+    "stamp": "node scripts/stamp_assets.js --write",
+    "test:video": "node scripts/test_video_indexing.js"
   },
   "build": {
     "appId": "com.saitraders.bridge",

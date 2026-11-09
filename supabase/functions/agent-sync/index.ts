@@ -19,6 +19,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { analyzeSareeImage } from '../_shared/gemini.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -530,57 +531,94 @@ async function addVideo(req: Request, body: Record<string, unknown>) {
   }, { onConflict: 'video_id,product_code' });
   if (itemErr) return json({ error: 'video_item_failed', detail: itemErr.message }, 500);
 
-  // What makes the saree findable. A failure here is reported, not swallowed: the video
-  // is recorded either way, but the shop must know image search was not taught.
+  // What makes the saree findable.
+  //
+  // Not an image embedding: Gemini's embedContent is text-only and answers "The text
+  // content is empty" for a picture, and all three embedding models it offers are
+  // text-only. The store server had been sending images to it and swallowing the
+  // failure, so frame matching never worked by either route.
+  //
+  // Matching a customer's photograph already works a different way, and this mirrors
+  // it: the photograph is DESCRIBED by Gemini vision, that description is embedded, and
+  // the result is compared against the saree's embedding. So the keyframes are described
+  // by the same model, which is what puts both sides in the same language.
+  let described = 0;
+  const seen: Record<string, unknown> = {};
+
+  for (const frame of frames.slice(0, 2)) {   // two frames is plenty to describe a saree
+    const raw = typeof frame.base64 === 'string' ? frame.base64 : '';
+    if (!raw) continue;
+    try {
+      const attrsFromFrame = await analyzeSareeImage(
+        raw.replace(/^data:image\/\w+;base64,/, ''),
+        String(frame.mimeType || 'image/jpeg')
+      );
+      for (const [k, v] of Object.entries(attrsFromFrame || {})) {
+        if (v && !seen[k]) seen[k] = v;
+      }
+      described++;
+    } catch (err) {
+      console.error('[add-video] could not describe a frame:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // What the shop typed wins over what the model saw: they are holding the saree.
+  const merged = { ...seen, ...attrs };
+
   const textFor = [
     tallyCode, 'saree', description,
-    attrs.fabric, attrs.weave_style, attrs.color_primary, attrs.border_type, attrs.zari_type,
+    merged.fabric, merged.weave_style, merged.color_primary, merged.color_secondary,
+    merged.border_type, merged.zari_type, merged.pattern, merged.pallu_design, merged.occasion,
   ].filter(Boolean).join(' ');
 
   const textEmb = await embed({ text: textFor });
-  let framesIndexed = 0;
 
+  // One row per keyframe, carrying the description embedding and its timestamp, so a
+  // match can be shown at the moment in the video where the saree appears.
+  let framesStored = 0;
   for (const frame of frames) {
-    const raw = typeof frame.base64 === 'string' ? frame.base64 : '';
-    if (!raw) continue;
-    const data = raw.replace(/^data:image\/\w+;base64,/, '');
-    const imageEmb = await embed({ inline_data: { mime_type: String(frame.mimeType || 'image/jpeg'), data } });
-
     const { error } = await db.from('saree_frame').insert({
       video_id: videoId,
       product_code: tallyCode,
       timestamp_sec: Number(frame.timestamp_sec) || 0,
-      attrs,
-      image_emb: imageEmb,
+      attrs: merged,
       text_emb: textEmb,
       embedding_model: 'gemini-embedding-001',
       embedding_dim: 768,
       verified: true,
     });
-    if (!error && imageEmb) framesIndexed++;
+    if (!error) framesStored++;
   }
 
-  // The product's own embedding, which is what a text search matches against.
+  // The product's own embedding, which is what a customer's photograph is matched
+  // against. Also worth keeping what the model saw, so the shop can correct it.
   if (textEmb) {
-    await db.from('saree_catalog')
-      .update({ embedding: textEmb, embedding_model: 'gemini-embedding-001', embedding_dim: 768 })
-      .eq('id', saree.id);
+    await db.from('saree_catalog').update({
+      embedding: textEmb,
+      embedding_model: 'gemini-embedding-001',
+      embedding_dim: 768,
+      attributes_json: merged,
+    }).eq('id', saree.id);
   }
 
   const { listed, needs } = await listIfReady(saree.id);
 
-  const indexing = framesIndexed
-    ? `${framesIndexed} of ${frames.length} frame(s) indexed for image search`
-    : frames.length
-      ? 'the frames could not be indexed for image search'
-      : 'no keyframes were captured, so image search has nothing to match';
+  const indexing = !textEmb
+    ? 'the saree could NOT be indexed for search — check the Gemini key'
+    : described
+      ? `${described} frame(s) described and the saree indexed for search`
+      : frames.length
+        ? 'the saree is indexed from its details; the frames could not be described'
+        : 'the saree is indexed from its details; no keyframes were captured';
 
   return json({
     ok: true,
     videoId,
-    framesIndexed,
     framesGiven: frames.length,
+    framesStored,
+    framesDescribed: described,
     textIndexed: Boolean(textEmb),
+    attributes: merged,
     listed,
     needs,
     message: listed

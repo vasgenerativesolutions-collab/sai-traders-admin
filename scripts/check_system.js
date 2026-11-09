@@ -291,6 +291,32 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
       }
     }
 
+    // The catalogue and the search must use the SAME embedding model.
+    //
+    // The catalogue was embedded with gemini-embedding-2 while the webhook embedded a
+    // customer's words with gemini-embedding-001. Two models mean two vector spaces, so
+    // every search returned nothing while the re-indexing and the search both reported
+    // success. Nothing anywhere said the two did not agree.
+    try {
+      const searchModel = (fs.readFileSync(path.join(ROOT, 'supabase', 'functions', '_shared', 'gemini.ts'), 'utf8')
+        .match(/models\/(gemini-embedding[\w.-]*):embedContent/) || [, null])[1];
+      const rows = await api('saree_catalog?select=embedding_model&is_active=eq.true&embedding_model=not.is.null');
+      const used = [...new Set(rows.map((r) => r.embedding_model))];
+
+      if (!searchModel) {
+        note('could not tell which model the search uses', 'check _shared/gemini.ts');
+      } else if (!used.length) {
+        note('no saree has been indexed yet', 'run: npm run reembed');
+      } else if (used.length > 1 || used[0] !== searchModel) {
+        bad(`the catalogue is indexed with ${used.join(' and ')} but searched with ${searchModel}`,
+          'they must match or every search returns nothing — run: npm run reembed');
+      } else {
+        good(`the catalogue and the search both use ${searchModel}`);
+      }
+    } catch (err) {
+      note(`could not compare embedding models: ${err.message}`);
+    }
+
     // How many sellable sarees a customer could actually find by searching.
     const indexed = await api('saree_catalog?select=sku&is_active=eq.true&embedding=not.is.null');
     const sellable = await api('saree_catalog?select=sku&is_active=eq.true&stock_quantity=gt.0');

@@ -3,11 +3,24 @@
  * 
  * Rules:
  * 1. Preserves legacy 'embedding' column untouched (side-by-side migration).
- * 2. Populates 'embedding_v2', 'embedding_model' = 'gemini-embedding-2', 'embedding_dim' = 768.
+ * 2. Populates 'embedding_v2', 'embedding_model' = 'gemini-embedding-001', 'embedding_dim' = 768.
  * 3. Tests vector similarity match using match_sarees_v2 RPC.
  * 4. Updates app_config.embedding_config.migration_status to 'completed'.
  * 
  * Usage: node scripts/reembed_catalog_v2.js
+ */
+
+/**
+ * NOTE ON THE MODEL
+ *
+ * gemini-embedding-001 is used here because that is what the live search uses:
+ * _shared/gemini.ts embeds a customer's words with it, and match_sarees compares the
+ * result against the catalogue. A different model here produces a different vector
+ * space, so every search returns nothing while both sides report success — which is
+ * exactly what was happening with gemini-embedding-2.
+ *
+ * To move to a newer model, change it in _shared/gemini.ts AND here, then re-run this
+ * script. Never one without the others.
  */
 
 const fs = require('fs');
@@ -58,10 +71,10 @@ function formatSareeText(s) {
 }
 
 async function getGeminiEmbeddingV2(text, title = 'Saree Catalog Item', taskType = 'RETRIEVAL_DOCUMENT') {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent?key=${GEMINI_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_KEY}`;
   
   const bodyPayload = {
-    model: 'models/gemini-embedding-2',
+    model: 'models/gemini-embedding-001',
     content: {
       parts: [{ text: text.slice(0, 4000) }]
     },
@@ -125,7 +138,13 @@ async function run() {
         throw new Error(`Invalid embedding length: ${embedding ? embedding.length : 0}`);
       }
 
-      // Update saree_catalog with embedding_v2 and provenance
+      // Write BOTH embedding columns.
+      //
+      // This wrote only embedding_v2, while the live WhatsApp search calls
+      // match_sarees, which reads `embedding`. So re-indexing the catalogue reported
+      // success and left every saree unfindable by the one path customers actually
+      // use. match_sarees_v2 reads embedding_v2 and additionally requires
+      // status = 'listed', which nothing here has yet, so it could not cover for it.
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/saree_catalog?id=eq.${s.id}`, {
         method: 'PATCH',
         headers: {
@@ -135,8 +154,9 @@ async function run() {
           Prefer: 'return=representation'
         },
         body: JSON.stringify({
+          embedding: embedding,
           embedding_v2: embedding,
-          embedding_model: 'gemini-embedding-2',
+          embedding_model: 'gemini-embedding-001',
           embedding_dim: 768
         })
       });
@@ -146,7 +166,7 @@ async function run() {
         console.log(`❌ DB Update Error: ${err}`);
         failCount++;
       } else {
-        console.log(`✅ Saved (768 dims, model: gemini-embedding-2)`);
+        console.log(`✅ Saved (768 dims, model: gemini-embedding-001)`);
         successCount++;
       }
 
@@ -233,7 +253,7 @@ async function run() {
       const currentConfig = rows[0].value || {};
       const updatedConfig = {
         ...currentConfig,
-        v2_model: 'gemini-embedding-2',
+        v2_model: 'gemini-embedding-001',
         v2_column: 'embedding_v2',
         dimension: 768,
         migration_status: 'completed',
