@@ -28,7 +28,8 @@
     "test:listing": "node scripts/test_listing_path.js",
     "test:hosted": "node scripts/test_hosted_workflow.js",
     "stamp": "node scripts/stamp_assets.js --write",
-    "test:video": "node scripts/test_video_indexing.js"
+    "test:video": "node scripts/test_video_indexing.js",
+    "test:cors": "node scripts/test_browser_cors.js"
   },
   "build": {
     "appId": "com.saitraders.bridge",

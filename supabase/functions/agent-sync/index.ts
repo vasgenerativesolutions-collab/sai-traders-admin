@@ -30,8 +30,14 @@ const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: fal
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'content-type',
+  // Every header a browser actually sends here. Allowing only content-type meant the
+  // preflight for any signed-in call was rejected and the dashboard reported "Failed to
+  // fetch" — which says nothing about which header was refused. The agent never hit this
+  // because it is not a browser and sends no preflight, so this only ever broke the one
+  // path that had no other way through.
+  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-supabase-api-version',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 };
 
 const json = (body: unknown, status = 200) =>
