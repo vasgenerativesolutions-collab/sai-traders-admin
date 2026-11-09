@@ -178,7 +178,7 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
   section('Stock');
   try {
     const [catalog, settings] = await Promise.all([
-      api('saree_catalog?select=sku,tally_part_number,stock_quantity,status,is_active,created_by'),
+      api('saree_catalog?select=sku,tally_part_number,name,price,stock_quantity,status,is_active,created_by'),
       api('app_settings?key=in.(tally_godown_stock_matrix,tally_unallocated_stock)&select=key,value,updated_at'),
     ]);
     const live = catalog.filter((p) => p.is_active !== false && p.status !== 'deleted');
@@ -229,7 +229,15 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
     if (drafts.length) {
       note(`${drafts.length} product(s) came from Tally and need details before they can sell`,
         'open each in the dashboard and add a price and photos, then list it');
-      drafts.slice(0, 6).forEach((p) => console.log(`${C.dim}         ${p.sku} — ${p.stock_quantity} in stock, no price yet${C.off}`));
+      drafts.slice(0, 6).forEach((p) => {
+        // Say what is actually missing. "no price yet" was printed whatever the price
+        // was, which is how a priced saree looked unpriced.
+        const lacks = [];
+        if (!(Number(p.price) > 0)) lacks.push('no price');
+        if (!(p.name || '').trim() || (p.name || '').trim().toLowerCase() === String(p.tally_part_number || p.sku || '').trim().toLowerCase()) lacks.push('no name');
+        if (p.status === 'archived' || p.status === 'deleted') lacks.push('taken off sale');
+        console.log(`${C.dim}         ${p.sku} — ${p.stock_quantity} in stock${lacks.length ? ', ' + lacks.join(', ') : ', needs a photo or video'}${C.off}`);
+      });
     }
 
     const needGodown = Object.entries(unalloc).filter(([, q]) => Number(q) > 0);
@@ -293,8 +301,21 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
       if (waiting.length) {
         const oldest = waiting[waiting.length - 1];
         const mins = (Date.now() - new Date(oldest.created_at)) / 60000;
-        if (mins > 5) bad(`${waiting.length} job(s) waiting, oldest ${ago(oldest.created_at)}`, 'the agent is not running — start it on the store PC');
-        else good(`${waiting.length} job(s) queued, will run shortly`);
+        // "will run shortly" is only true if an agent is collecting work. Saying it
+        // while the store PC has been off for days is the same failure as the rest of
+        // this file used to have: reporting the intention rather than the situation.
+        const agentLive = activeDevice && activeDevice.last_seen_at
+          && (Date.now() - new Date(activeDevice.last_seen_at)) / 1000 < 180;
+
+        if (!agentLive) {
+          note(`${waiting.length} job(s) waiting for the store PC`,
+            'they apply by themselves once the agent is running — nothing is lost');
+        } else if (mins > 5) {
+          bad(`${waiting.length} job(s) waiting, oldest ${ago(oldest.created_at)}`,
+            'the agent is reporting in but not finishing work — check its log');
+        } else {
+          good(`${waiting.length} job(s) queued, will run within seconds`);
+        }
       } else {
         good('no job is waiting');
       }

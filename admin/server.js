@@ -5459,6 +5459,7 @@ app.post('/api/adjust-tally-stock', requireAdminAuth, async (req, res) => {
     }
 
     // Still pending: the agent is not currently collecting work.
+    console.log(`[AdjustStock] ${tallyName} -> ${newQty} queued; the store PC is not collecting work`);
     return res.json({
       success: true,
       queued: true,
