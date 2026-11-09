@@ -39,6 +39,18 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
 
   let apiBase = isDirectBackend ? '' : (localStorage.getItem('sai_api_base_url') || '');
 
+  // A stored API address pointing at this machine cannot work for anyone else, and
+  // while it is set the dashboard routes every call to a server instead of reading
+  // Supabase directly — so the hosted dashboard silently depends on one laptop being
+  // switched on. The prompt that used to set this is gone; a leftover value from it is
+  // discarded rather than quietly honoured.
+  if (apiBase && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(apiBase)) {
+    console.log('[Sai] Ignoring a stored API address that points at localhost (' + apiBase + ').');
+    console.log('[Sai] Reading Supabase directly instead, which works from any device.');
+    localStorage.removeItem('sai_api_base_url');
+    apiBase = '';
+  }
+
   const originalFetch = window.fetch;
 
   // ---------------------------------------------------------------------------

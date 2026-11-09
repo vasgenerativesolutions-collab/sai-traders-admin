@@ -5429,6 +5429,7 @@ app.post('/api/adjust-tally-stock', requireAdminAuth, async (req, res) => {
     }
 
     if (finalState === 'failed') {
+      console.warn(`[AdjustStock] ${tallyName} -> ${newQty} FAILED: ${jobError}`);
       return res.status(502).json({
         success: false,
         error: jobError || 'Tally rejected the update',
@@ -5445,6 +5446,8 @@ app.post('/api/adjust-tally-stock', requireAdminAuth, async (req, res) => {
         headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ stock_quantity: newQty, updated_at: new Date().toISOString() })
       }).catch(() => {});
+
+      console.log(`[AdjustStock] ${tallyName} -> ${newQty} in ${targetGodown}: ${JSON.stringify(jobResult)}`);
 
       return res.json({
         success: true,
