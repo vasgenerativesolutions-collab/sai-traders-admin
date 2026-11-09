@@ -2,6 +2,8 @@
  * Meta WhatsApp Business Cloud API Integration Helper
  */
 
+import { getSupabaseAdmin } from "./supabase-client.ts";
+
 export interface WhatsAppButton {
   id: string;
   title: string;
@@ -89,9 +91,90 @@ export async function resolveWhatsAppCredentials(): Promise<{ token: string; pho
 }
 
 /**
+ * Keep a record of what the shop said to a customer.
+ *
+ * The webhook replies in 39 places and recorded none of them, so the database held one
+ * side of every conversation: what was asked, never what was answered. The morning
+ * check could see that a customer ordered but not what price they were quoted, and a
+ * reply that never arrived left no trace — the customer simply met silence.
+ *
+ * This lives in the send helpers rather than at the 39 call sites, so a reply is
+ * recorded whether or not anyone remembers to, including replies added later.
+ *
+ * Recorded AFTER WhatsApp answers, with what actually happened. A log of what was
+ * composed would be worse than none, because it would be believed.
+ */
+async function recordOutbound(
+  to: string,
+  messageType: string,
+  content: string,
+  result: { success: boolean; data?: unknown; error?: string },
+  mediaUrl?: string,
+): Promise<void> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const phone = to.replace(/[^0-9]/g, "");
+    if (!phone) return;
+
+    // The conversation this belongs to. Matched on the last ten digits so a number
+    // stored with or without its country code still finds its own thread.
+    const tail = phone.slice(-10);
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("id")
+      .like("phone_number", `%${tail}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!customer) return;   // nobody to attach it to; the send still happened
+
+    const { data: conversation } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("customer_id", customer.id)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!conversation) return;
+
+    const sent = result.success;
+    const waId = sent
+      ? ((result.data as { messages?: { id?: string }[] } | undefined)?.messages?.[0]?.id ?? null)
+      : null;
+
+    await supabase.from("messages").insert({
+      conversation_id: conversation.id,
+      direction: "outbound",
+      message_type: messageType,
+      content: content.slice(0, 4000),
+      media_url: mediaUrl ?? null,
+      wa_message_id: waId,
+      status: sent ? "sent" : "failed",
+      error: sent ? null : (result.error || "unknown error").slice(0, 500),
+    });
+  } catch (err) {
+    // Recording must never break replying. A customer getting an answer matters more
+    // than the log of it, so this is the one place a swallowed error is right — and it
+    // is logged, so it is not invisible.
+    console.error("[whatsapp] could not record an outbound message:", err);
+  }
+}
+
+export async function sendWhatsAppText(
+  to: string,
+  text: string,
+  previewUrl = false
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  const result = await sendWhatsAppTextRaw(to, text, previewUrl);
+  await recordOutbound(to, "text", String(text ?? ''), result);
+  return result;
+}
+
+/**
  * Send standard WhatsApp text message
  */
-export async function sendWhatsAppText(
+async function sendWhatsAppTextRaw(
   to: string,
   text: string,
   previewUrl = false
@@ -137,10 +220,20 @@ export async function sendWhatsAppText(
   }
 }
 
+export async function sendWhatsAppImage(
+  to: string,
+  imageUrl: string,
+  caption?: string
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  const result = await sendWhatsAppImageRaw(to, imageUrl, caption);
+  await recordOutbound(to, "image", String(caption ?? ''), result, imageUrl);
+  return result;
+}
+
 /**
  * Send WhatsApp Image message with optional caption
  */
-export async function sendWhatsAppImage(
+async function sendWhatsAppImageRaw(
   to: string,
   imageUrl: string,
   caption?: string
@@ -185,10 +278,22 @@ export async function sendWhatsAppImage(
   }
 }
 
+export async function sendWhatsAppInteractiveButtons(
+  to: string,
+  bodyText: string,
+  buttons: WhatsAppButton[],
+  headerText?: string,
+  footerText?: string
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  const result = await sendWhatsAppInteractiveButtonsRaw(to, bodyText, buttons, headerText, footerText);
+  await recordOutbound(to, "interactive", String(bodyText ?? ''), result);
+  return result;
+}
+
 /**
  * Send Interactive Action Buttons (up to 3 buttons)
  */
-export async function sendWhatsAppInteractiveButtons(
+async function sendWhatsAppInteractiveButtonsRaw(
   to: string,
   bodyText: string,
   buttons: WhatsAppButton[],
@@ -251,10 +356,22 @@ export async function sendWhatsAppInteractiveButtons(
   }
 }
 
+export async function sendWhatsAppInteractiveImageCard(
+  to: string,
+  imageUrl: string,
+  bodyText: string,
+  buttons: WhatsAppButton[],
+  footerText = "Sai Traders"
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  const result = await sendWhatsAppInteractiveImageCardRaw(to, imageUrl, bodyText, buttons, footerText);
+  await recordOutbound(to, "interactive", String(bodyText ?? ''), result, imageUrl);
+  return result;
+}
+
 /**
  * Send Interactive Action Buttons with an Image Header (Unified Product Card)
  */
-export async function sendWhatsAppInteractiveImageCard(
+async function sendWhatsAppInteractiveImageCardRaw(
   to: string,
   imageUrl: string,
   bodyText: string,
@@ -315,10 +432,23 @@ export async function sendWhatsAppInteractiveImageCard(
   }
 }
 
+export async function sendWhatsAppInteractiveList(
+  to: string,
+  bodyText: string,
+  buttonTitle: string,
+  sections: WhatsAppListSection[],
+  headerText?: string,
+  footerText?: string
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  const result = await sendWhatsAppInteractiveListRaw(to, bodyText, buttonTitle, sections, headerText, footerText);
+  await recordOutbound(to, "interactive", String(bodyText ?? ''), result);
+  return result;
+}
+
 /**
  * Send Interactive List Message (for choosing between multiple sarees)
  */
-export async function sendWhatsAppInteractiveList(
+async function sendWhatsAppInteractiveListRaw(
   to: string,
   bodyText: string,
   buttonTitle: string,

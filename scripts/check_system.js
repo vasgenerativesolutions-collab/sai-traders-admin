@@ -404,6 +404,43 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
     note(`could not check WhatsApp: ${err.message}`);
   }
 
+    // Customers the shop tried to answer and could not reach.
+    //
+    // A reply that does not arrive leaves the customer in silence, and until now it left
+    // no trace either — the shop found out when someone complained, if at all. Now that
+    // every reply is recorded with what WhatsApp said, the unanswered ones can be named.
+    try {
+      const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const failed = await api(
+        `messages?select=content,error,created_at,conversation_id&direction=eq.outbound&status=eq.failed` +
+        `&created_at=gte.${since}&order=created_at.desc&limit=50`
+      );
+
+      if (failed.length) {
+        const customers = new Set(failed.map((m) => m.conversation_id));
+        bad(`${failed.length} repl(ies) to ${customers.size} customer(s) did not arrive in the last 24 hours`,
+          'those customers are waiting in silence — the reason is below');
+
+        // One line per distinct reason, since fifty failures usually share one cause.
+        const reasons = new Map();
+        for (const m of failed) {
+          const why = String(m.error || 'no reason recorded').slice(0, 90);
+          reasons.set(why, (reasons.get(why) || 0) + 1);
+        }
+        for (const [why, n] of [...reasons].slice(0, 4)) {
+          console.log(`${C.dim}         ${n}x  ${why}${C.off}`);
+        }
+      } else {
+        const replies = await api(
+          `messages?select=id&direction=eq.outbound&created_at=gte.${since}&limit=1`
+        );
+        if (replies.length) good('every reply reached its customer in the last 24 hours');
+        else note('the shop has not replied to anyone in the last 24 hours', 'normal if nobody messaged');
+      }
+    } catch (err) {
+      note(`could not check replies: ${err.message}`);
+    }
+
   // --- the dashboard's own assets -------------------------------------------
   //
   // index.html loads the script with a ?v= stamp. GitHub Pages serves it with

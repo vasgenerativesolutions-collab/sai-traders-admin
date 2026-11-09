@@ -211,6 +211,9 @@ serve(async (req: Request) => {
       await supabase.from("messages").insert({
         conversation_id: conversationId,
         direction: "inbound",
+        // A message that arrived was received, not sent. The column default is for
+        // outbound replies, where it is overwritten with what WhatsApp actually said.
+        status: "received",
         message_type: msgType,
         content: msgType === "text" ? String((msg.text as Record<string, unknown>)?.body || "") : "",
         wa_message_id: messageId,

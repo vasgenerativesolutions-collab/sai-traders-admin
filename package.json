@@ -29,7 +29,8 @@
     "test:hosted": "node scripts/test_hosted_workflow.js",
     "stamp": "node scripts/stamp_assets.js --write",
     "test:video": "node scripts/test_video_indexing.js",
-    "test:cors": "node scripts/test_browser_cors.js"
+    "test:cors": "node scripts/test_browser_cors.js",
+    "test:whatsapp": "node scripts/test_whatsapp_inbound.js"
   },
   "build": {
     "appId": "com.saitraders.bridge",
