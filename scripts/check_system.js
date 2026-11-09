@@ -333,6 +333,77 @@ const section = (t) => { console.log(''); console.log(`${C.b}${t}${C.off}`); };
     note(`could not check search indexing: ${err.message}`);
   }
 
+  // --- WhatsApp ---------------------------------------------------------------
+  //
+  // A token that has expired fails the same way as one that was never set, and the
+  // shop finds out when a customer gets no reply. The expiry is knowable in advance,
+  // so it is worth saying before it happens rather than after.
+  section('WhatsApp');
+  try {
+    const token = E.WHATSAPP_ACCESS_TOKEN;
+    const phoneId = E.WHATSAPP_PHONE_NUMBER_ID;
+
+    if (!token || !phoneId) {
+      bad('no WhatsApp credentials are set', 'add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID to .env');
+    } else {
+      const res = await fetch(
+        `https://graph.facebook.com/v21.0/${phoneId}?fields=display_phone_number,verified_name,quality_rating`,
+        { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) }
+      );
+      const info = await res.json();
+
+      if (!res.ok) {
+        bad(`WhatsApp rejects this token (HTTP ${res.status})`,
+          'generate a new one in Meta Business, put it in .env, then: npx supabase secrets set --env-file .env');
+        const why = info && info.error && info.error.message;
+        if (why) console.log(`${C.dim}       ${String(why).slice(0, 110)}${C.off}`);
+      } else {
+        const name = info.verified_name || 'unnamed';
+        const number = info.display_phone_number || '';
+
+        // Meta's sandbox number can only message numbers you have registered as
+        // testers, so a shop running on it cannot reach a single real customer.
+        if (/^test/i.test(name)) {
+          note(`connected to Meta's test number (${number})`,
+            'it can only message registered test recipients — connect the shop number before going live');
+        } else {
+          good(`connected as ${name} (${number})`);
+        }
+
+        // How long this token has left.
+        try {
+          const dbg = await fetch(
+            `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`,
+            { signal: AbortSignal.timeout(15000) }
+          ).then((r) => r.json());
+          const d = dbg && dbg.data;
+          if (d && d.expires_at) {
+            // The token answered a moment ago, so it has not expired; what matters is
+            // how long is left. Rounding to days turned "a few hours" into "expired",
+            // which is a different problem with a different fix.
+            const hours = (d.expires_at * 1000 - Date.now()) / 3600000;
+            const days = Math.floor(hours / 24);
+            if (hours <= 0) {
+              bad('this WhatsApp token has expired', 'create a permanent System User token in Meta Business Settings');
+            } else if (hours < 48) {
+              bad(`this WhatsApp token expires in about ${Math.max(1, Math.round(hours))} hour(s)`,
+                'a User token is temporary — create a permanent System User token in Meta Business Settings > Users > System Users');
+            } else if (days <= 7) {
+              bad(`this WhatsApp token expires in ${days} day(s)`,
+                'create a permanent System User token in Meta Business Settings > Users > System Users');
+            } else {
+              note(`this token expires in ${days} days`, 'a permanent System User token does not expire');
+            }
+          } else if (d) {
+            good('the token is permanent');
+          }
+        } catch (_dbgErr) { /* the expiry is a nicety, not the check */ }
+      }
+    }
+  } catch (err) {
+    note(`could not check WhatsApp: ${err.message}`);
+  }
+
   // --- the dashboard's own assets -------------------------------------------
   //
   // index.html loads the script with a ?v= stamp. GitHub Pages serves it with
